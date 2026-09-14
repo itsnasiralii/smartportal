@@ -19,6 +19,7 @@ $feature_tab_map = [
     'matrix' => 'tab-matrix',
     'roster' => 'tab-roster',
     'vpbx' => 'tab-vpbx',
+    'nms' => 'tab-nms',
 ];
 $active_tab_id = '';
 foreach ($feature_tab_map as $fkey => $tId) {
