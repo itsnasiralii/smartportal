@@ -9,8 +9,8 @@ $use_sqlite = true; // Toggle to false for MySQL
 
 if ($use_sqlite) {
     try {
-        $noc_data_dir = getenv('NOC_DATA_DIR') ?: dirname(__DIR__) . '/noc_data';
-        if (!is_dir($noc_data_dir)) mkdir($noc_data_dir, 0700, true);
+        $noc_data_dir = getenv('NOC_DATA_DIR') ?: __DIR__ . '/noc_data';
+        if (!is_dir($noc_data_dir)) @mkdir($noc_data_dir, 0777, true);
         // Keep the existing installation database unless a data directory is configured.
         $db_path = getenv('NOC_DATA_DIR') ? $noc_data_dir . '/welcome.sqlite' : __DIR__ . '/welcome.sqlite';
         $pdo = new PDO("sqlite:" . $db_path);

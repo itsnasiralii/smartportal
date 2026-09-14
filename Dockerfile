@@ -27,8 +27,8 @@ RUN if [ -f "requirements-outage.txt" ]; then pip3 install --no-cache-dir -r req
 
 # Set appropriate permissions for SQLite database and web server
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html \
-    && chmod 664 /var/www/html/welcome.sqlite
+    && chmod -R 777 /var/www/html \
+    && chmod 666 /var/www/html/welcome.sqlite
 
 # Configure Apache Port for Render ($PORT)
 ENV PORT=80
