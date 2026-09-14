@@ -1,0 +1,261 @@
+{
+  "COMPLAINT_DEFAULT_ISSUES": [
+    "Link is down.",
+    "Service degradation.",
+    "Intermittent connectivity.",
+    "High latency observed.",
+    "Packet loss observed.",
+    "Slow browsing issue.",
+    "Bandwidth issue.",
+    "Website / application issue.",
+    "Other / To be classified"
+  ],
+  "OPENING_ISSUES": [
+    "Link is down.",
+    "Service degradation.",
+    "Intermittent connectivity.",
+    "High latency observed.",
+    "Packet loss observed.",
+    "Slow browsing issue.",
+    "Bandwidth issue.",
+    "Website / application issue.",
+    "Other / Manual"
+  ],
+  "FINDING_OPTIONS": [
+    "No problematic alarm observed at Node end",
+    "Port is up",
+    "Tunnel is intact",
+    "ARP is not observed",
+    "MAC is not observed",
+    "User is offline at BRAS",
+    "Optical power is optimal",
+    "Traffic is observed at our end",
+    "Latency is optimal",
+    "No abnormality observed in transmission path"
+  ],
+  "CUSTOMER_ACTIONS": [
+    "Verify last-mile media",
+    "Check CPE/router and power",
+    "Check SFP/optical module and equipment port",
+    "Reconnect the affected PPPoE user",
+    "Test through standalone laptop/device",
+    "Bypass LAN and perform direct testing",
+    "Share active POC for joint troubleshooting",
+    "Share problematic stats for further investigation"
+  ],
+  "customer_action_sentence": {
+    "Verify last-mile media": "Kindly verify the service from the last-mile media and share your feedback.",
+    "Check CPE/router and power": "Kindly verify the CPE/router status and power availability at your end.",
+    "Check SFP/optical module and equipment port": "Kindly check the SFP/optical module and equipment port at your end and share updated status.",
+    "Reconnect the affected PPPoE user": "Kindly reconnect the affected PPPoE user and confirm whether the session comes online.",
+    "Test through standalone laptop/device": "Kindly perform testing through a standalone laptop/device to isolate any internal LAN impact.",
+    "Bypass LAN and perform direct testing": "Kindly bypass the internal LAN and perform direct testing from the edge device.",
+    "Share active POC for joint troubleshooting": "Kindly share an active POC so joint troubleshooting can be arranged.",
+    "Share problematic stats for further investigation": "If the issue persists, kindly share the problematic statistics for further investigation."
+  },
+  "ESCALATION_LEVELS": [
+    "Initial engagement",
+    "Follow-up",
+    "Urgent",
+    "Critical",
+    "Multiple follow-ups / no response",
+    "Request exact delay reason / RFO"
+  ],
+  "ESCALATION_FORMAT_OPTIONS": [
+    "Option A (Standard Matrix Format)",
+    "Option B (Subject-Linked Format)",
+    "Option C ([Ticket] : [Subject] : [Vendor])"
+  ],
+  "RCA_OPTIONS": [
+    "Fiber Break (Dual/Triple)",
+    "Fiber Break (Single)",
+    "Fiber Break (Spur)",
+    "Power Issue",
+    "Power Issue at PTN / Node",
+    "Port Down",
+    "Port Problematic",
+    "Customer related issue",
+    "Customer own last mile",
+    "Customer end power issue",
+    "Hardware Faulty",
+    "Configurations Issue",
+    "Link Choking / Over-utilization",
+    "Frequency Interference",
+    "Optical Power Issue",
+    "Vendor / Upstream Issue",
+    "Routing Issue",
+    "Submarine Cable Cut",
+    "No Issue Observed",
+    "Other / Manual"
+  ],
+  "ISSUE_FOUND_AT": [
+    "Customer",
+    "CONVEX",
+    "NSS TEAM",
+    "PRODUCT TEAM",
+    "SELLER",
+    "NOMC - Transmission Optical",
+    "Vendor",
+    "Region - Field Operations (FOPs)",
+    "NOMC - IP Core",
+    "Uplink ISP",
+    "NOMC - Transmission Microwave",
+    "TXN PM",
+    "TXN CM",
+    "RCA Awaited",
+    "Other"
+  ],
+  "AUTO_ACTIONS": {
+    "Fiber Break (Dual/Triple)": "Affected fiber section was restored/spliced and service connectivity was normalized.",
+    "Fiber Break (Single)": "Affected fiber section was restored/spliced and service connectivity was normalized.",
+    "Fiber Break (Spur)": "Spur fiber fault was restored and service connectivity was normalized.",
+    "Power Issue": "Power was restored at the affected site/node and service became operational.",
+    "Power Issue at PTN / Node": "Power was restored at the affected PTN/node and service became operational.",
+    "Port Down": "Port connectivity was restored and the service became operational.",
+    "Port Problematic": "The problematic port/connectivity was rectified and service was restored.",
+    "Customer related issue": "Service became operational after customer-end verification/restoration.",
+    "Customer own last mile": "The customer/last-mile issue was rectified and service became operational.",
+    "Customer end power issue": "Customer-end power was restored and service became operational.",
+    "Hardware Faulty": "The faulty hardware/equipment was rectified/replaced and service was restored.",
+    "Configurations Issue": "Required configuration was rectified and service was restored.",
+    "Link Choking / Over-utilization": "Bandwidth/utilization was normalized and the service was verified.",
+    "Frequency Interference": "Wireless parameters/path were optimized and service stability was restored.",
+    "Optical Power Issue": "Optical parameters were normalized and service connectivity was restored.",
+    "Vendor / Upstream Issue": "The upstream/vendor issue was resolved and service was restored.",
+    "Routing Issue": "Routing/path configuration was rectified and service was restored.",
+    "Submarine Cable Cut": "Upstream capacity/path was restored or stabilized after the submarine cable incident.",
+    "No Issue Observed": "No activity was performed at our end; the service was already found operational."
+  },
+  "STATS_SCENARIOS": [
+    "Packet Loss / High Latency",
+    "Slow Speed / Throughput",
+    "Turbo Slow Speed",
+    "Website Issue",
+    "Particular Website / URL Issue",
+    "Banking Application Issue",
+    "TikTok Issue",
+    "WhatsApp / Meta Issue",
+    "PPPoE / BRAS Issue",
+    "Voice / PRI / SIP Issue",
+    "Optical Power Issue",
+    "Routing / BGP Issue"
+  ],
+  "stats_items": {
+    "Packet Loss / High Latency": [
+      "Ping statistics from the affected user",
+      "WinMTR / traceroute towards the problematic destination",
+      "Source IP / testing IP pool",
+      "Destination IP / URL",
+      "Affected user details",
+      "Exact issue occurrence date and time"
+    ],
+    "Slow Speed / Throughput": [
+      "Speedtest result",
+      "Speedtest server details",
+      "Affected user/source IP",
+      "Direct/standalone testing result after bypassing the LAN",
+      "Current issue occurrence time"
+    ],
+    "Turbo Slow Speed": [
+      "Direct speed and browsing test through a standalone laptop/device",
+      "Affected PPPoE user / source IP",
+      "Speedtest server details and result",
+      "Issue occurrence time"
+    ],
+    "Website Issue": [
+      "Source IP pool",
+      "Browser error screenshot",
+      "Traceroute / WinMTR towards the problematic destination",
+      "NSLOOKUP result of the problematic destination",
+      "NSLOOKUP result of whoami.akamai.com",
+      "Tracetcp towards the affected URL on port 443",
+      "Primary and secondary DNS configuration"
+    ],
+    "Particular Website / URL Issue": [
+      "Snapshot of whatismyipaddress.com",
+      "Source IP pool",
+      "Browser error screenshot",
+      "Traceroute towards the problematic destination",
+      "WinMTR / tracetcp towards the affected URL on port 443",
+      "NSLOOKUP result of the problematic destination",
+      "Primary and secondary DNS configuration"
+    ],
+    "Banking Application Issue": [
+      "Snapshot of whatismyipaddress.com",
+      "Source IP pool",
+      "Browser/application error screenshot",
+      "NSLOOKUP / traceroute / WinMTR details where applicable",
+      "PCAP trace from the affected Android phone using PCAPdroid"
+    ],
+    "TikTok Issue": [
+      "DNS server IP configured at the edge device",
+      "NSLOOKUP whoami.akamai.com screenshot",
+      "Standalone test using Ethernet cable and a test PPPoE user",
+      "Windows Task Manager > Performance > Ethernet screenshot while playing a TikTok video",
+      "Affected user/source IP and issue occurrence time"
+    ],
+    "WhatsApp / Meta Issue": [
+      "Affected user/source IP",
+      "Issue occurrence time",
+      "Ping / WinMTR towards a reachable problematic destination if available",
+      "DNS configuration",
+      "Standalone testing result after bypassing the LAN"
+    ],
+    "PPPoE / BRAS Issue": [
+      "PPPoE username",
+      "Affected user MAC address",
+      "CPE/router status",
+      "Exact disconnect/login time",
+      "Standalone dial/test result",
+      "Screenshot/error message if authentication fails"
+    ],
+    "Voice / PRI / SIP Issue": [
+      "Party-A number",
+      "Party-B number",
+      "Exact call date and time",
+      "Incoming / outgoing call scenario",
+      "Observed error / announcement",
+      "CLI displayed at Party-B where applicable"
+    ],
+    "Optical Power Issue": [
+      "Current TX/RX optical power readings",
+      "SFP/optical module details",
+      "Equipment port status",
+      "Patch-cord/fiber inspection result",
+      "Relevant alarm/screenshot for reference"
+    ],
+    "Routing / BGP Issue": [
+      "Source IP pool / affected prefix",
+      "Problematic destination IP / URL",
+      "Traceroute / WinMTR",
+      "Current route advertisement details",
+      "Expected upstream/path if known"
+    ]
+  },
+  "PROGRESS_OPTIONS": [
+    "Concerned team engaged",
+    "Fault localization in progress",
+    "Team dispatched",
+    "Team reached site",
+    "Fiber splicing in progress",
+    "Rerouting in progress",
+    "Configuration activity in progress",
+    "Vendor engaged",
+    "Customer coordination required",
+    "Testing in progress",
+    "Monitoring link stability"
+  ],
+  "PROGRESS_TEXT": {
+    "Concerned team engaged": "Our concerned team is actively engaged and working on the reported issue.",
+    "Fault localization in progress": "Fault localization is currently in progress and is being followed up on priority.",
+    "Team dispatched": "The concerned field team has been dispatched for onsite troubleshooting/restoration.",
+    "Team reached site": "The field team has reached the site and troubleshooting/restoration activity is in progress.",
+    "Fiber splicing in progress": "Fiber splicing activity is currently in progress at the affected section.",
+    "Rerouting in progress": "Rerouting activity is in progress to restore the affected service through an alternate path.",
+    "Configuration activity in progress": "The concerned technical team is carrying out the required configuration activity.",
+    "Vendor engaged": "The concerned vendor/upstream team has been engaged and is investigating the issue.",
+    "Customer coordination required": "Further troubleshooting requires customer-side coordination. Kindly ensure an active POC is available.",
+    "Testing in progress": "Detailed testing is currently in progress with the concerned teams.",
+    "Monitoring link stability": "The link is currently under monitoring to verify stability and service performance."
+  }
+}

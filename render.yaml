@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: noc-portal
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NOC_USERNAME
+        value: nasir
+      - key: NOC_PASSWORD
+        generateValue: true
+      - key: NOC_ADMIN_PASSWORD
+        value: admin123
