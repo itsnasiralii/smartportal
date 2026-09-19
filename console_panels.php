@@ -835,6 +835,18 @@
    <div class="router-filter-box">
     <div class="router-filter-grid">
      <div class="form-group">
+      <label for="router-global-search">🔎 Quick Find Across All Routers</label>
+      <input id="router-global-search" type="search" placeholder="Client, IP, Link ID, VLAN, VRF..." oninput="queueRouterGlobalSearch()">
+     </div>
+
+     <div class="form-group">
+      <label for="router-global-results">🎯 Matching Circuit</label>
+      <select id="router-global-results" onchange="handleRouterGlobalResult()" disabled>
+       <option value="">Type 2+ characters to search</option>
+      </select>
+     </div>
+
+     <div class="form-group">
       <label for="router-device-filter">🖥️ Stored Router</label>
       <select id="router-device-filter" onchange="handleRouterDeviceChange()">
        <option value="">Select Stored Router</option>
