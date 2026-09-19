@@ -800,15 +800,17 @@ if ($action === 'get_router_commands') {
 // -----------------------------------------------------------------------------
 if ($action === 'get_router_inventory_meta') {
     $devices = $pdo->query("
-        SELECT d.id, d.hostname, d.platform, d.source_name, d.imported_at,
-               COUNT(DISTINCT i.id) AS interface_count,
-               COUNT(DISTINCT v.id) AS vrf_count,
-               COUNT(DISTINCT p.id) AS peer_count
+        SELECT d.id, d.hostname, d.platform, d.role, d.site_code, d.software_version,
+               d.router_id, d.bgp_asn, d.source_name, d.imported_at, d.config_line_count,
+               (SELECT COUNT(*) FROM router_interfaces i WHERE i.device_id = d.id) AS interface_count,
+               (SELECT COUNT(DISTINCT client_name) FROM router_interfaces i WHERE i.device_id = d.id AND TRIM(COALESCE(client_name,'')) <> '') AS client_count,
+               (SELECT COUNT(*) FROM router_vrfs v WHERE v.device_id = d.id) AS vrf_count,
+               (SELECT COUNT(*) FROM router_bgp_peers p WHERE p.device_id = d.id) AS peer_count,
+               (SELECT COUNT(*) FROM router_qos_profiles q WHERE q.device_id = d.id) AS qos_count,
+               (SELECT COUNT(*) FROM router_static_routes s WHERE s.device_id = d.id) AS static_route_count,
+               (SELECT COUNT(*) FROM router_ospf_processes o WHERE o.device_id = d.id) AS ospf_count,
+               (SELECT COUNT(*) FROM router_isis_processes x WHERE x.device_id = d.id) AS isis_count
         FROM router_devices d
-        LEFT JOIN router_interfaces i ON i.device_id = d.id
-        LEFT JOIN router_vrfs v ON v.device_id = d.id
-        LEFT JOIN router_bgp_peers p ON p.device_id = d.id
-        GROUP BY d.id
         ORDER BY d.hostname COLLATE NOCASE
     ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -840,7 +842,11 @@ if ($action === 'get_router_inventory') {
         exit;
     }
 
-    $stmt = $pdo->prepare("SELECT id, hostname, platform, source_name, imported_at FROM router_devices WHERE id = ?");
+    $stmt = $pdo->prepare("
+        SELECT id, hostname, platform, role, site_code, software_version, router_id, bgp_asn,
+               source_name, config_updated_at, config_saved_at, config_line_count, parser_version, imported_at
+        FROM router_devices WHERE id = ?
+    ");
     $stmt->execute([$deviceId]);
     $device = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$device) {
@@ -849,12 +855,19 @@ if ($action === 'get_router_inventory') {
     }
 
     $stmt = $pdo->prepare("
-        SELECT i.id, i.interface_name, i.description, i.client_name, i.vlan_id, i.vrf, i.bandwidth_kbps,
+        SELECT i.id, i.interface_name, i.interface_type, i.parent_interface, i.description,
+               i.client_name, i.service_type, i.site_name, i.link_id, i.bandwidth_label,
+               i.vlan_id, i.vrf, i.bandwidth_kbps, i.qos_in_profile, i.qos_out_profile,
+               i.qos_in_cir_kbps, i.qos_in_pir_kbps, i.qos_out_cir_kbps, i.qos_out_pir_kbps,
+               i.mtu, i.ospf_cost, i.ospf_network_type, i.isis_process,
                ip.ip_address, ip.subnet_mask, ip.prefix_length, ip.is_secondary
         FROM router_interfaces i
         LEFT JOIN router_interface_ips ip ON ip.interface_id = i.id
         WHERE i.device_id = ?
-        ORDER BY i.client_name COLLATE NOCASE, i.interface_name COLLATE NOCASE, ip.is_secondary ASC, ip.id ASC
+        ORDER BY
+            CASE WHEN TRIM(COALESCE(i.client_name,'')) = '' THEN 1 ELSE 0 END,
+            i.client_name COLLATE NOCASE, i.site_name COLLATE NOCASE,
+            i.interface_name COLLATE NOCASE, ip.is_secondary ASC, ip.id ASC
     ");
     $stmt->execute([$deviceId]);
     $interfaces = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -867,7 +880,8 @@ if ($action === 'get_router_inventory') {
     unset($interfaceRow);
 
     $stmt = $pdo->prepare("
-        SELECT id, vrf, peer_ip, remote_asn, import_policy, export_policy, import_prefix, export_prefix
+        SELECT id, vrf, peer_ip, remote_asn, description, peer_group, source_interface,
+               address_families, import_policy, export_policy, import_prefix, export_prefix
         FROM router_bgp_peers
         WHERE device_id = ?
         ORDER BY vrf COLLATE NOCASE, peer_ip
@@ -875,26 +889,85 @@ if ($action === 'get_router_inventory') {
     $stmt->execute([$deviceId]);
     $peers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt = $pdo->prepare("SELECT vrf_name FROM router_vrfs WHERE device_id = ? ORDER BY vrf_name COLLATE NOCASE");
+    $stmt = $pdo->prepare("
+        SELECT vrf_name, route_distinguisher, label_mode, import_route_policy, has_ipv4, has_ipv6,
+               import_targets, export_targets, bgp_imports
+        FROM router_vrfs
+        WHERE device_id = ?
+        ORDER BY vrf_name COLLATE NOCASE
+    ");
     $stmt->execute([$deviceId]);
-    $vrfs = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $vrfDetails = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $vrfs = array_map(fn($row) => (string)$row['vrf_name'], $vrfDetails);
 
-    $stmt = $pdo->prepare("SELECT name FROM router_prefix_lists WHERE device_id = ? ORDER BY name COLLATE NOCASE");
+    $stmt = $pdo->prepare("SELECT name, entry_count FROM router_prefix_lists WHERE device_id = ? ORDER BY name COLLATE NOCASE");
     $stmt->execute([$deviceId]);
-    $prefixLists = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $prefixDetails = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $prefixLists = array_map(fn($row) => (string)$row['name'], $prefixDetails);
 
-    $stmt = $pdo->prepare("SELECT name FROM router_route_policies WHERE device_id = ? ORDER BY name COLLATE NOCASE");
+    $stmt = $pdo->prepare("SELECT name, node_count FROM router_route_policies WHERE device_id = ? ORDER BY name COLLATE NOCASE");
     $stmt->execute([$deviceId]);
-    $routePolicies = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $routePolicyDetails = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $routePolicies = array_map(fn($row) => (string)$row['name'], $routePolicyDetails);
+
+    $stmt = $pdo->prepare("
+        SELECT name, cir_kbps, pir_kbps, applied_count
+        FROM router_qos_profiles
+        WHERE device_id = ?
+        ORDER BY applied_count DESC, name COLLATE NOCASE
+    ");
+    $stmt->execute([$deviceId]);
+    $qosProfiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmt = $pdo->prepare("
+        SELECT process_id, vrf, router_id, area_count, network_count, default_advertise, imports, protocol
+        FROM router_ospf_processes
+        WHERE device_id = ?
+        ORDER BY protocol, CAST(process_id AS INTEGER), process_id
+    ");
+    $stmt->execute([$deviceId]);
+    $ospfProcesses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmt = $pdo->prepare("
+        SELECT process_id, level, network_entity, is_name
+        FROM router_isis_processes
+        WHERE device_id = ?
+        ORDER BY CAST(process_id AS INTEGER), process_id
+    ");
+    $stmt->execute([$deviceId]);
+    $isisProcesses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $countsStmt = $pdo->prepare("
+        SELECT
+            (SELECT COUNT(*) FROM router_interfaces WHERE device_id = ?) AS interfaces,
+            (SELECT COUNT(DISTINCT client_name) FROM router_interfaces WHERE device_id = ? AND TRIM(COALESCE(client_name,'')) <> '') AS clients,
+            (SELECT COUNT(*) FROM router_vrfs WHERE device_id = ?) AS vrfs,
+            (SELECT COUNT(*) FROM router_bgp_peers WHERE device_id = ?) AS bgp_peers,
+            (SELECT COUNT(*) FROM router_static_routes WHERE device_id = ?) AS static_routes,
+            (SELECT COUNT(*) FROM router_qos_profiles WHERE device_id = ?) AS qos_profiles,
+            (SELECT COUNT(*) FROM router_prefix_lists WHERE device_id = ?) AS prefix_lists,
+            (SELECT COUNT(*) FROM router_route_policies WHERE device_id = ?) AS route_policies,
+            (SELECT COUNT(*) FROM router_ospf_processes WHERE device_id = ?) AS ospf_processes,
+            (SELECT COUNT(*) FROM router_isis_processes WHERE device_id = ?) AS isis_processes
+    ");
+    $countsStmt->execute(array_fill(0, 10, $deviceId));
+    $facts = $countsStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
     echo json_encode([
         'success' => true,
         'device' => $device,
+        'facts' => $facts,
         'interfaces' => $interfaces,
         'peers' => $peers,
         'vrfs' => $vrfs,
+        'vrf_details' => $vrfDetails,
         'prefix_lists' => $prefixLists,
-        'route_policies' => $routePolicies
+        'prefix_details' => $prefixDetails,
+        'route_policies' => $routePolicies,
+        'route_policy_details' => $routePolicyDetails,
+        'qos_profiles' => $qosProfiles,
+        'ospf_processes' => $ospfProcesses,
+        'isis_processes' => $isisProcesses
     ]);
     exit;
 }
