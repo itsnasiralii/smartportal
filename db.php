@@ -504,6 +504,7 @@ if ($use_sqlite) {
             ['router_vrfs','has_ipv6','INTEGER DEFAULT 0'],
             ['router_vrfs','import_targets','TEXT'],
             ['router_vrfs','export_targets','TEXT'],
+            ['router_vrfs','bgp_imports','TEXT'],
             ['router_bgp_peers','description','TEXT'],
             ['router_bgp_peers','peer_group','TEXT COLLATE NOCASE'],
             ['router_bgp_peers','source_interface','TEXT COLLATE NOCASE'],
@@ -551,6 +552,7 @@ if ($use_sqlite) {
                 network_count INTEGER DEFAULT 0,
                 default_advertise INTEGER DEFAULT 0,
                 imports TEXT,
+                protocol TEXT COLLATE NOCASE DEFAULT 'OSPF',
                 FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
             )
         ");
@@ -565,6 +567,8 @@ if ($use_sqlite) {
                 FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
             )
         ");
+
+        $ensure_router_column('router_ospf_processes', 'protocol', "TEXT COLLATE NOCASE DEFAULT 'OSPF'");
 
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_devices_role ON router_devices(role)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_devices_site ON router_devices(site_code)");
