@@ -462,6 +462,145 @@ if ($use_sqlite) {
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_peer_device ON router_bgp_peers(device_id)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_peer_vrf ON router_bgp_peers(vrf)");
 
+        // Router Inventory v2: richer operational facts without storing raw configurations/secrets.
+        $ensure_router_column = function (string $table, string $column, string $definition) use ($pdo): void {
+            $columns = $pdo->query("PRAGMA table_info(" . $table . ")")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($columns as $existing) {
+                if (strcasecmp((string)$existing['name'], $column) === 0) return;
+            }
+            $pdo->exec("ALTER TABLE " . $table . " ADD COLUMN " . $column . " " . $definition);
+        };
+
+        foreach ([
+            ['router_devices','software_version','TEXT'],
+            ['router_devices','router_id','TEXT COLLATE NOCASE'],
+            ['router_devices','bgp_asn','TEXT'],
+            ['router_devices','role','TEXT COLLATE NOCASE'],
+            ['router_devices','site_code','TEXT COLLATE NOCASE'],
+            ['router_devices','config_updated_at','TEXT'],
+            ['router_devices','config_saved_at','TEXT'],
+            ['router_devices','config_line_count','INTEGER DEFAULT 0'],
+            ['router_devices','parser_version','INTEGER DEFAULT 2'],
+            ['router_interfaces','interface_type','TEXT COLLATE NOCASE'],
+            ['router_interfaces','parent_interface','TEXT COLLATE NOCASE'],
+            ['router_interfaces','service_type','TEXT COLLATE NOCASE'],
+            ['router_interfaces','site_name','TEXT COLLATE NOCASE'],
+            ['router_interfaces','link_id','TEXT COLLATE NOCASE'],
+            ['router_interfaces','bandwidth_label','TEXT'],
+            ['router_interfaces','qos_in_profile','TEXT COLLATE NOCASE'],
+            ['router_interfaces','qos_out_profile','TEXT COLLATE NOCASE'],
+            ['router_interfaces','qos_in_cir_kbps','INTEGER'],
+            ['router_interfaces','qos_in_pir_kbps','INTEGER'],
+            ['router_interfaces','qos_out_cir_kbps','INTEGER'],
+            ['router_interfaces','qos_out_pir_kbps','INTEGER'],
+            ['router_interfaces','mtu','INTEGER'],
+            ['router_interfaces','ospf_cost','INTEGER'],
+            ['router_interfaces','ospf_network_type','TEXT COLLATE NOCASE'],
+            ['router_interfaces','isis_process','TEXT COLLATE NOCASE'],
+            ['router_vrfs','route_distinguisher','TEXT COLLATE NOCASE'],
+            ['router_vrfs','label_mode','TEXT COLLATE NOCASE'],
+            ['router_vrfs','import_route_policy','TEXT COLLATE NOCASE'],
+            ['router_vrfs','has_ipv4','INTEGER DEFAULT 0'],
+            ['router_vrfs','has_ipv6','INTEGER DEFAULT 0'],
+            ['router_vrfs','import_targets','TEXT'],
+            ['router_vrfs','export_targets','TEXT'],
+            ['router_bgp_peers','description','TEXT'],
+            ['router_bgp_peers','peer_group','TEXT COLLATE NOCASE'],
+            ['router_bgp_peers','source_interface','TEXT COLLATE NOCASE'],
+            ['router_bgp_peers','address_families','TEXT'],
+            ['router_prefix_lists','entry_count','INTEGER DEFAULT 0'],
+            ['router_route_policies','node_count','INTEGER DEFAULT 0']
+        ] as $columnSpec) {
+            $ensure_router_column($columnSpec[0], $columnSpec[1], $columnSpec[2]);
+        }
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_qos_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                name TEXT NOT NULL COLLATE NOCASE,
+                cir_kbps INTEGER,
+                pir_kbps INTEGER,
+                applied_count INTEGER DEFAULT 0,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_static_routes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                vrf TEXT COLLATE NOCASE,
+                destination TEXT COLLATE NOCASE,
+                subnet_mask TEXT,
+                prefix_length INTEGER,
+                outgoing_interface TEXT COLLATE NOCASE,
+                next_hop TEXT COLLATE NOCASE,
+                preference INTEGER,
+                description TEXT,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_ospf_processes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                process_id TEXT NOT NULL COLLATE NOCASE,
+                vrf TEXT COLLATE NOCASE,
+                router_id TEXT COLLATE NOCASE,
+                area_count INTEGER DEFAULT 0,
+                network_count INTEGER DEFAULT 0,
+                default_advertise INTEGER DEFAULT 0,
+                imports TEXT,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_isis_processes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                process_id TEXT NOT NULL COLLATE NOCASE,
+                level TEXT COLLATE NOCASE,
+                network_entity TEXT COLLATE NOCASE,
+                is_name TEXT,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_devices_role ON router_devices(role)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_devices_site ON router_devices(site_code)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_interfaces_service ON router_interfaces(service_type)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_interfaces_site_name ON router_interfaces(site_name)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_interfaces_link_id ON router_interfaces(link_id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_interface_ips_ip ON router_interface_ips(ip_address)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_qos_device ON router_qos_profiles(device_id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_qos_name ON router_qos_profiles(name)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_static_device ON router_static_routes(device_id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_static_vrf ON router_static_routes(vrf)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_static_destination ON router_static_routes(destination)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_ospf_device ON router_ospf_processes(device_id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_ospf_vrf ON router_ospf_processes(vrf)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_isis_device ON router_isis_processes(device_id)");
+
+        $router_seeded_v2 = $pdo->query("SELECT meta_value FROM router_command_meta WHERE meta_key = 'seeded_v2' LIMIT 1")->fetchColumn();
+        if (!$router_seeded_v2) {
+            $router_v2_commands = [
+                ['Selected interface status', 'NE40E / NE40EX8', 'Interface', 'display interface {interface}', 'Show status, counters and errors for the selected interface.', 5],
+                ['Selected interface ARP', 'NE40E / NE40EX8', 'ARP', 'display arp interface {interface}', 'Check Layer-2 adjacency on the selected interface.', 5],
+                ['Selected interface configuration', 'NE40E / NE40EX8', 'Interface', 'display current-configuration interface {interface}', 'Show the complete selected interface configuration.', 6],
+                ['VRF routing table', 'NE40E / NE40EX8', 'Routing', 'display ip routing-table vpn-instance {vrf}', 'Show the routing table for the selected VPN-instance.', 5],
+                ['VRF BGP routing table', 'NE40E / EGW', 'BGP', 'display bgp vpnv4 vpn-instance {vrf} routing-table', 'Show BGP routes installed for the selected VPN-instance.', 5],
+                ['Selected Vlanif configuration', 'S9306', 'Interface', 'display current-configuration interface {interface}', 'Show the complete configuration of the selected Vlanif.', 5],
+                ['Selected Vlanif ARP', 'S9306', 'ARP', 'display arp interface {interface}', 'Check ARP entries on the selected Vlanif.', 5]
+            ];
+            $router_v2_stmt = $pdo->prepare("INSERT INTO router_commands (title, platform, category, command_template, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
+            foreach ($router_v2_commands as $router_row) {
+                $exists = $pdo->prepare("SELECT 1 FROM router_commands WHERE platform = ? COLLATE NOCASE AND command_template = ? COLLATE NOCASE LIMIT 1");
+                $exists->execute([$router_row[1], $router_row[3]]);
+                if (!$exists->fetchColumn()) $router_v2_stmt->execute($router_row);
+            }
+            $pdo->prepare("INSERT OR REPLACE INTO router_command_meta (meta_key, meta_value) VALUES ('seeded_v2', ?)")->execute([date('c')]);
+        }
+
         $NOC_FEATURES = [
             'complaints' => '📁 Complaint Manager',
             'opening' => '🚨 Opening',
