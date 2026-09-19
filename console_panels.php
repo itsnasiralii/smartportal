@@ -821,59 +821,119 @@
 
 <?php if (has_feature_access('router')): ?>
 <div id="tab-router" class="tab-content <?= ($active_tab_id ?? '') === 'tab-router' ? 'active' : '' ?>">
- <div class="panel-card">
+ <div class="panel-card router-shell">
   <div class="panel-header router-command-header">
    <div>
-    <div class="router-eyebrow">Database-backed • Relevant commands only</div>
+    <div class="router-eyebrow">Database-backed • CNOC command selector</div>
     <h2>🛠️ Router Commands</h2>
-    <p>Select the router family and task first. The portal will load only the matching commands.</p>
+    <p>Select stored data from dropdowns, enter only runtime values, then copy the generated command.</p>
    </div>
    <div class="router-readonly-badge">READ-ONLY</div>
   </div>
+
   <div class="panel-body">
-   <div class="router-command-toolbar">
-    <div class="form-group">
-     <label for="router-platform-filter">1. Router / Platform</label>
-     <select id="router-platform-filter" onchange="handleRouterPlatformChange()">
-      <option value="">-- Select Router / Platform --</option>
-     </select>
+   <div class="router-filter-box">
+    <div class="router-filter-grid">
+     <div class="form-group">
+      <label for="router-platform-filter">🧭 Router / Platform</label>
+      <select id="router-platform-filter" onchange="handleRouterPlatformChange()">
+       <option value="">Select Router / Platform</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-category-filter">🧰 Troubleshooting Task</label>
+      <select id="router-category-filter" onchange="handleRouterCategoryChange()" disabled>
+       <option value="">Select Task</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-command-select">⌨️ Command</label>
+      <select id="router-command-select" onchange="handleRouterCommandSelection()" disabled>
+       <option value="">All Relevant Commands</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-command-filter">🔎 Search</label>
+      <input id="router-command-filter" type="search" placeholder="Search selected task..." oninput="queueRouterCommandSearch()" disabled>
+     </div>
+
+     <div class="form-group" data-router-var="vlan" hidden>
+      <label for="router-vlan">🔢 VLAN ID</label>
+      <input id="router-vlan" placeholder="e.g. 846" oninput="renderRouterCommands()">
+     </div>
+
+     <div class="form-group" data-router-var="trunk" hidden>
+      <label for="router-trunk">🔗 Eth-Trunk</label>
+      <input id="router-trunk" placeholder="e.g. 31" oninput="renderRouterCommands()">
+     </div>
+
+     <div class="form-group" data-router-var="ip" hidden>
+      <label for="router-ip">🌐 Destination IP</label>
+      <input id="router-ip" placeholder="e.g. 192.0.2.10" oninput="renderRouterCommands()">
+     </div>
+
+     <div class="form-group" data-router-var="vrf" hidden>
+      <label for="router-vrf">🧩 VPN / VRF</label>
+      <input id="router-vrf" placeholder="e.g. CUSTOMER_VRF" oninput="renderRouterCommands()">
+     </div>
+
+     <div class="form-group" data-router-var="peer_ip" hidden>
+      <label for="router-peer-ip">📡 BGP Peer IP</label>
+      <input id="router-peer-ip" placeholder="e.g. 192.0.2.2" oninput="renderRouterCommands()">
+     </div>
+
+     <div class="form-group" data-router-var="search" hidden>
+      <label for="router-config-search">🔍 Config Search Text</label>
+      <input id="router-config-search" placeholder="VLAN / IP / keyword" oninput="renderRouterCommands()">
+     </div>
+
+     <div class="form-group" data-router-var="policy" hidden>
+      <label for="router-policy">🛡️ Route Policy</label>
+      <input id="router-policy" placeholder="e.g. CUSTOMER_IMPORT" oninput="renderRouterCommands()">
+     </div>
+
+     <div class="form-group" data-router-var="prefix" hidden>
+      <label for="router-prefix">📚 IP Prefix List</label>
+      <input id="router-prefix" placeholder="e.g. CUSTOMER_PREFIX" oninput="renderRouterCommands()">
+     </div>
     </div>
-    <div class="form-group">
-     <label for="router-category-filter">2. Troubleshooting Task</label>
-     <select id="router-category-filter" onchange="handleRouterCategoryChange()" disabled>
-      <option value="">-- Select Task --</option>
-     </select>
-    </div>
-    <div class="form-group">
-     <label for="router-command-filter">3. Search Within Results</label>
-     <input id="router-command-filter" type="search" placeholder="Optional keyword..." oninput="queueRouterCommandSearch()" disabled>
+
+    <div class="router-filter-footer">
+     <div id="router-selection-hint">Select a router/platform and troubleshooting task to load commands.</div>
+     <button type="button" class="btn-secondary" onclick="resetRouterCommandInputs(true)">Reset All</button>
     </div>
    </div>
 
-   <div id="router-selection-hint" class="router-empty-state">
-    Select a <strong>Router / Platform</strong> and <strong>Troubleshooting Task</strong>. No full command dump will be shown.
+   <div id="router-flow-note" class="router-flow-note" hidden>
+    <strong>Recommended troubleshooting flow:</strong> Interface → ARP → VPN/VRF → Ping → Routing → BGP / Policy
    </div>
 
-   <div id="router-variable-panel" class="router-variable-panel" hidden>
-    <div class="router-variable-title">
-     <div><strong>Required Command Variables</strong><small>Only fields needed by the selected commands are shown.</small></div>
-     <button type="button" class="btn-secondary" onclick="resetRouterCommandInputs(false)">Clear Values</button>
-    </div>
-    <div class="router-variable-grid">
-     <div class="form-group" data-router-var="vlan" hidden><label for="router-vlan">VLAN</label><input id="router-vlan" placeholder="e.g. 846" oninput="renderRouterCommands()"></div>
-     <div class="form-group" data-router-var="trunk" hidden><label for="router-trunk">Eth-Trunk</label><input id="router-trunk" placeholder="e.g. 31" oninput="renderRouterCommands()"></div>
-     <div class="form-group" data-router-var="ip" hidden><label for="router-ip">Destination IP</label><input id="router-ip" placeholder="e.g. 192.0.2.10" oninput="renderRouterCommands()"></div>
-     <div class="form-group" data-router-var="vrf" hidden><label for="router-vrf">VPN / VRF</label><input id="router-vrf" placeholder="e.g. CUSTOMER_VRF" oninput="renderRouterCommands()"></div>
-     <div class="form-group" data-router-var="peer_ip" hidden><label for="router-peer-ip">BGP Peer IP</label><input id="router-peer-ip" placeholder="e.g. 192.0.2.2" oninput="renderRouterCommands()"></div>
-     <div class="form-group" data-router-var="search" hidden><label for="router-config-search">Config Search Text</label><input id="router-config-search" placeholder="VLAN / IP / keyword" oninput="renderRouterCommands()"></div>
-     <div class="form-group" data-router-var="policy" hidden><label for="router-policy">Route Policy</label><input id="router-policy" placeholder="e.g. CUSTOMER_IMPORT" oninput="renderRouterCommands()"></div>
-     <div class="form-group" data-router-var="prefix" hidden><label for="router-prefix">IP Prefix List</label><input id="router-prefix" placeholder="e.g. CUSTOMER_PREFIX" oninput="renderRouterCommands()"></div>
+   <div class="router-results-head">
+    <div>
+     <h3>Command Output</h3>
+     <span id="router-command-count" class="router-command-count"></span>
     </div>
    </div>
 
-   <div id="router-flow-note" class="router-flow-note" hidden><strong>Suggested flow:</strong> Interface → ARP → VPN/VRF → Ping → Routing Table → BGP / Policy</div>
-   <div id="router-command-count" class="router-command-count"></div>
-   <div id="router-command-list" class="router-command-grid"></div>
+   <div class="table-responsive router-table-wrap">
+    <table class="data-table router-command-table">
+     <thead>
+      <tr>
+       <th>Command Name</th>
+       <th>Purpose</th>
+       <th>Generated Command</th>
+       <th>Status</th>
+       <th>Action</th>
+      </tr>
+     </thead>
+     <tbody id="router-command-tbody">
+      <tr><td colspan="5" class="router-table-empty">Select a router/platform and task to begin.</td></tr>
+     </tbody>
+    </table>
+   </div>
   </div>
  </div>
 </div>

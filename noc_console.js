@@ -1636,44 +1636,62 @@ async function loadRouterCommandMeta() {
 
     routerCommandMeta = result;
     const platformSelect = $('router-platform-filter');
-    platformSelect.replaceChildren(new Option('-- Select Router / Platform --', ''));
+    platformSelect.replaceChildren(new Option('Select Router / Platform', ''));
     (result.platforms || []).forEach(platform => platformSelect.add(new Option(platform, platform)));
 }
 
 function handleRouterPlatformChange() {
     const platform = val('router-platform-filter');
     const categorySelect = $('router-category-filter');
+    const commandSelect = $('router-command-select');
     const search = $('router-command-filter');
 
     routerCommands = [];
-    categorySelect.replaceChildren(new Option('-- Select Task --', ''));
+    categorySelect.replaceChildren(new Option('Select Task', ''));
     categorySelect.disabled = !platform;
+    commandSelect.replaceChildren(new Option('All Relevant Commands', ''));
+    commandSelect.disabled = true;
     search.value = '';
     search.disabled = true;
-    resetRouterCommandInputs(false);
-    clearRouterCommandResults();
+    clearRouterRuntimeValues();
+    updateRouterVariableVisibility();
+    renderRouterCommands();
 
-    if (!platform || !routerCommandMeta) return;
+    if (!platform || !routerCommandMeta) {
+        setRouterHint('Select a router/platform and troubleshooting task to load commands.');
+        return;
+    }
 
     const categories = routerCommandMeta.categories?.[platform] || [];
     categories.forEach(item => {
         const label = item.count > 1 ? `${item.name} (${item.count})` : item.name;
         categorySelect.add(new Option(label, item.name));
     });
-    $('router-selection-hint').innerHTML = 'Now select the <strong>Troubleshooting Task</strong> for <strong>' + escapeHtml(platform) + '</strong>.';
+    setRouterHint('Select the troubleshooting task for ' + platform + '.');
 }
 
 function handleRouterCategoryChange() {
     const category = val('router-category-filter');
     $('router-command-filter').value = '';
     $('router-command-filter').disabled = !category;
-    resetRouterCommandInputs(false);
+    $('router-command-select').replaceChildren(new Option('All Relevant Commands', ''));
+    $('router-command-select').disabled = true;
+    clearRouterRuntimeValues();
+
     if (!category) {
         routerCommands = [];
-        clearRouterCommandResults();
+        updateRouterVariableVisibility();
+        renderRouterCommands();
+        setRouterHint('Select a troubleshooting task.');
         return;
     }
+
     loadRelevantRouterCommands();
+}
+
+function handleRouterCommandSelection() {
+    updateRouterVariableVisibility();
+    renderRouterCommands();
 }
 
 function queueRouterCommandSearch() {
@@ -1684,10 +1702,7 @@ function queueRouterCommandSearch() {
 async function loadRelevantRouterCommands() {
     const platform = val('router-platform-filter');
     const category = val('router-category-filter');
-    if (!platform || !category) {
-        clearRouterCommandResults();
-        return;
-    }
+    if (!platform || !category) return;
 
     const params = new URLSearchParams({
         action: 'get_router_commands',
@@ -1695,6 +1710,7 @@ async function loadRelevantRouterCommands() {
         category,
         q: val('router-command-filter')
     });
+
     const response = await fetch('api.php?' + params);
     const result = await response.json();
     if (!response.ok || !result.success) {
@@ -1703,16 +1719,29 @@ async function loadRelevantRouterCommands() {
     }
 
     routerCommands = Array.isArray(result.commands) ? result.commands : [];
+
+    const commandSelect = $('router-command-select');
+    const previous = commandSelect.value;
+    commandSelect.replaceChildren(new Option('All Relevant Commands', ''));
+    routerCommands.forEach(command => commandSelect.add(new Option(command.title, String(command.id))));
+    commandSelect.disabled = routerCommands.length === 0;
+    if ([...commandSelect.options].some(opt => opt.value === previous)) commandSelect.value = previous;
+
     updateRouterVariableVisibility();
     renderRouterCommands();
-
-    $('router-selection-hint').hidden = true;
     $('router-flow-note').hidden = false;
+    setRouterHint(routerCommands.length ? 'Stored values come from the database. Enter only the runtime fields shown below.' : 'No command is stored for this selection.');
+}
+
+function getVisibleRouterCommands() {
+    const selectedId = val('router-command-select');
+    if (!selectedId) return routerCommands;
+    return routerCommands.filter(command => String(command.id) === selectedId);
 }
 
 function updateRouterVariableVisibility() {
     const required = new Set();
-    routerCommands.forEach(command => {
+    getVisibleRouterCommands().forEach(command => {
         for (const match of String(command.template || '').matchAll(/\{([a-z0-9_]+)\}/gi)) {
             required.add(match[1]);
         }
@@ -1721,55 +1750,56 @@ function updateRouterVariableVisibility() {
     document.querySelectorAll('[data-router-var]').forEach(group => {
         group.hidden = !required.has(group.dataset.routerVar);
     });
-
-    $('router-variable-panel').hidden = required.size === 0;
 }
 
-function clearRouterCommandResults() {
-    if ($('router-command-list')) $('router-command-list').innerHTML = '';
-    if ($('router-command-count')) $('router-command-count').textContent = '';
-    if ($('router-variable-panel')) $('router-variable-panel').hidden = true;
-    if ($('router-flow-note')) $('router-flow-note').hidden = true;
-    if ($('router-selection-hint')) {
-        $('router-selection-hint').hidden = false;
-        if (!val('router-platform-filter')) {
-            $('router-selection-hint').innerHTML = 'Select a <strong>Router / Platform</strong> and <strong>Troubleshooting Task</strong>. No full command dump will be shown.';
-        }
-    }
+function setRouterHint(message) {
+    const hint = $('router-selection-hint');
+    if (hint) hint.textContent = message;
+}
+
+function clearRouterRuntimeValues() {
+    ['router-vlan','router-trunk','router-ip','router-vrf','router-peer-ip','router-config-search','router-policy','router-prefix']
+        .forEach(id => { if ($(id)) $(id).value = ''; });
 }
 
 function renderRouterCommands() {
-    const target = $('router-command-list');
-    if (!target) return;
+    const tbody = $('router-command-tbody');
+    if (!tbody) return;
 
-    $('router-command-count').textContent = routerCommands.length + ' relevant command' + (routerCommands.length === 1 ? '' : 's');
+    const visible = getVisibleRouterCommands();
+    $('router-command-count').textContent = visible.length
+        ? visible.length + ' relevant command' + (visible.length === 1 ? '' : 's')
+        : '';
 
-    target.innerHTML = routerCommands.map(command => {
+    if (!val('router-platform-filter') || !val('router-category-filter')) {
+        tbody.innerHTML = '<tr><td colspan="5" class="router-table-empty">Select a router/platform and task to begin.</td></tr>';
+        return;
+    }
+
+    if (!visible.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="router-table-empty">No command matches this selection.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = visible.map(command => {
         const generated = buildRouterCommand(command.template);
         const missing = routerCommandMissingVariables(command.template);
         const status = missing.length
-            ? '<span class="router-command-status pending">Needs: ' + missing.map(escapeHtml).join(', ') + '</span>'
+            ? '<span class="router-command-status pending">Needs ' + missing.map(escapeHtml).join(', ') + '</span>'
             : '<span class="router-command-status ready">Ready</span>';
 
         return `
-            <article class="router-command-card">
-                <div class="router-command-card-top">
-                    <div>
-                        <div class="router-command-tags">
-                            <span class="router-tag platform">${escapeHtml(command.platform || '')}</span>
-                            <span class="router-tag">${escapeHtml(command.category || '')}</span>
-                        </div>
-                        <h3>${escapeHtml(command.title || 'Router command')}</h3>
-                    </div>
-                    ${status}
-                </div>
-                <p>${escapeHtml(command.description || '')}</p>
-                <pre class="router-command-output">${escapeHtml(generated)}</pre>
-                <div class="router-command-actions">
-                    <button type="button" class="btn-copy" onclick="copyRouterCommand(${Number(command.id)})">📋 Copy Command</button>
-                </div>
-            </article>`;
-    }).join('') || '<div class="router-empty-state">No command matches this router/task selection.</div>';
+            <tr>
+                <td>
+                    <strong>${escapeHtml(command.title || 'Router command')}</strong>
+                    <div class="router-row-meta">${escapeHtml(command.platform || '')} • ${escapeHtml(command.category || '')}</div>
+                </td>
+                <td class="router-purpose-cell">${escapeHtml(command.description || '—')}</td>
+                <td><code class="router-command-inline">${escapeHtml(generated)}</code></td>
+                <td>${status}</td>
+                <td><button type="button" class="btn-copy" onclick="copyRouterCommand(${Number(command.id)})">📋 Copy</button></td>
+            </tr>`;
+    }).join('');
 }
 
 async function copyRouterCommand(id) {
@@ -1791,26 +1821,30 @@ async function copyRouterCommand(id) {
 }
 
 function resetRouterCommandInputs(resetSelectors = true) {
-    ['router-vlan','router-trunk','router-ip','router-vrf','router-peer-ip','router-config-search','router-policy','router-prefix']
-        .forEach(id => { if ($(id)) $(id).value = ''; });
+    clearRouterRuntimeValues();
 
     if (resetSelectors) {
         if ($('router-platform-filter')) $('router-platform-filter').value = '';
         if ($('router-category-filter')) {
-            $('router-category-filter').replaceChildren(new Option('-- Select Task --', ''));
+            $('router-category-filter').replaceChildren(new Option('Select Task', ''));
             $('router-category-filter').disabled = true;
+        }
+        if ($('router-command-select')) {
+            $('router-command-select').replaceChildren(new Option('All Relevant Commands', ''));
+            $('router-command-select').disabled = true;
         }
         if ($('router-command-filter')) {
             $('router-command-filter').value = '';
             $('router-command-filter').disabled = true;
         }
         routerCommands = [];
-        clearRouterCommandResults();
-    } else {
-        renderRouterCommands();
+        $('router-flow-note').hidden = true;
+        setRouterHint('Select a router/platform and troubleshooting task to load commands.');
     }
-}
 
+    updateRouterVariableVisibility();
+    renderRouterCommands();
+}
 
 // router-auto-load
 document.addEventListener('DOMContentLoaded', () => {
