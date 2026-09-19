@@ -820,54 +820,61 @@
 <?php endif; ?>
 
 <?php if (has_feature_access('router')): ?>
-<?php
-$router_commands_payload = ['commands' => []];
-$router_commands_path = __DIR__ . '/router_commands.json';
-if (is_file($router_commands_path)) {
-    $decoded_router_commands = json_decode((string)file_get_contents($router_commands_path), true);
-    if (is_array($decoded_router_commands) && isset($decoded_router_commands['commands']) && is_array($decoded_router_commands['commands'])) {
-        $router_commands_payload = $decoded_router_commands;
-    }
-}
-?>
 <div id="tab-router" class="tab-content <?= ($active_tab_id ?? '') === 'tab-router' ? 'active' : '' ?>">
  <div class="panel-card">
   <div class="panel-header router-command-header">
    <div>
-    <div class="router-eyebrow">Operational reference • Read-only templates</div>
+    <div class="router-eyebrow">Database-backed • Relevant commands only</div>
     <h2>🛠️ Router Commands</h2>
-    <p>Generate and copy common Huawei troubleshooting commands.</p>
+    <p>Select the router family and task first. The portal will load only the matching commands.</p>
    </div>
    <div class="router-readonly-badge">READ-ONLY</div>
   </div>
   <div class="panel-body">
    <div class="router-command-toolbar">
-    <div class="form-group"><label for="router-command-filter">Search Commands</label><input id="router-command-filter" type="search" placeholder="ARP, BGP, Vlanif..." oninput="renderRouterCommands()"></div>
-    <div class="form-group"><label for="router-platform-filter">Platform</label><select id="router-platform-filter" onchange="renderRouterCommands()"><option value="">All Platforms</option></select></div>
-    <div class="form-group"><label for="router-category-filter">Category</label><select id="router-category-filter" onchange="renderRouterCommands()"><option value="">All Categories</option></select></div>
-   </div>
-
-   <div class="router-variable-panel">
-    <div class="router-variable-title"><div><strong>Command Variables</strong><small>Fill only the values required by the selected command.</small></div><button type="button" class="btn-secondary" onclick="resetRouterCommandInputs()">Reset</button></div>
-    <div class="router-variable-grid">
-     <div class="form-group"><label for="router-vlan">VLAN</label><input id="router-vlan" placeholder="e.g. 846" oninput="renderRouterCommands()"></div>
-     <div class="form-group"><label for="router-trunk">Eth-Trunk</label><input id="router-trunk" placeholder="e.g. 31" oninput="renderRouterCommands()"></div>
-     <div class="form-group"><label for="router-ip">Destination IP</label><input id="router-ip" placeholder="e.g. 192.0.2.10" oninput="renderRouterCommands()"></div>
-     <div class="form-group"><label for="router-vrf">VPN / VRF</label><input id="router-vrf" placeholder="e.g. CUSTOMER_VRF" oninput="renderRouterCommands()"></div>
-     <div class="form-group"><label for="router-peer-ip">BGP Peer IP</label><input id="router-peer-ip" placeholder="e.g. 192.0.2.2" oninput="renderRouterCommands()"></div>
-     <div class="form-group"><label for="router-config-search">Search Text</label><input id="router-config-search" placeholder="VLAN / IP / keyword" oninput="renderRouterCommands()"></div>
-     <div class="form-group"><label for="router-policy">Route Policy</label><input id="router-policy" placeholder="e.g. CUSTOMER_IMPORT" oninput="renderRouterCommands()"></div>
-     <div class="form-group"><label for="router-prefix">IP Prefix List</label><input id="router-prefix" placeholder="e.g. CUSTOMER_PREFIX" oninput="renderRouterCommands()"></div>
+    <div class="form-group">
+     <label for="router-platform-filter">1. Router / Platform</label>
+     <select id="router-platform-filter" onchange="handleRouterPlatformChange()">
+      <option value="">-- Select Router / Platform --</option>
+     </select>
+    </div>
+    <div class="form-group">
+     <label for="router-category-filter">2. Troubleshooting Task</label>
+     <select id="router-category-filter" onchange="handleRouterCategoryChange()" disabled>
+      <option value="">-- Select Task --</option>
+     </select>
+    </div>
+    <div class="form-group">
+     <label for="router-command-filter">3. Search Within Results</label>
+     <input id="router-command-filter" type="search" placeholder="Optional keyword..." oninput="queueRouterCommandSearch()" disabled>
     </div>
    </div>
 
-   <div class="router-flow-note"><strong>Suggested flow:</strong> Interface → ARP → VPN/VRF → Ping → Routing Table → BGP / Policy</div>
+   <div id="router-selection-hint" class="router-empty-state">
+    Select a <strong>Router / Platform</strong> and <strong>Troubleshooting Task</strong>. No full command dump will be shown.
+   </div>
+
+   <div id="router-variable-panel" class="router-variable-panel" hidden>
+    <div class="router-variable-title">
+     <div><strong>Required Command Variables</strong><small>Only fields needed by the selected commands are shown.</small></div>
+     <button type="button" class="btn-secondary" onclick="resetRouterCommandInputs(false)">Clear Values</button>
+    </div>
+    <div class="router-variable-grid">
+     <div class="form-group" data-router-var="vlan" hidden><label for="router-vlan">VLAN</label><input id="router-vlan" placeholder="e.g. 846" oninput="renderRouterCommands()"></div>
+     <div class="form-group" data-router-var="trunk" hidden><label for="router-trunk">Eth-Trunk</label><input id="router-trunk" placeholder="e.g. 31" oninput="renderRouterCommands()"></div>
+     <div class="form-group" data-router-var="ip" hidden><label for="router-ip">Destination IP</label><input id="router-ip" placeholder="e.g. 192.0.2.10" oninput="renderRouterCommands()"></div>
+     <div class="form-group" data-router-var="vrf" hidden><label for="router-vrf">VPN / VRF</label><input id="router-vrf" placeholder="e.g. CUSTOMER_VRF" oninput="renderRouterCommands()"></div>
+     <div class="form-group" data-router-var="peer_ip" hidden><label for="router-peer-ip">BGP Peer IP</label><input id="router-peer-ip" placeholder="e.g. 192.0.2.2" oninput="renderRouterCommands()"></div>
+     <div class="form-group" data-router-var="search" hidden><label for="router-config-search">Config Search Text</label><input id="router-config-search" placeholder="VLAN / IP / keyword" oninput="renderRouterCommands()"></div>
+     <div class="form-group" data-router-var="policy" hidden><label for="router-policy">Route Policy</label><input id="router-policy" placeholder="e.g. CUSTOMER_IMPORT" oninput="renderRouterCommands()"></div>
+     <div class="form-group" data-router-var="prefix" hidden><label for="router-prefix">IP Prefix List</label><input id="router-prefix" placeholder="e.g. CUSTOMER_PREFIX" oninput="renderRouterCommands()"></div>
+    </div>
+   </div>
+
+   <div id="router-flow-note" class="router-flow-note" hidden><strong>Suggested flow:</strong> Interface → ARP → VPN/VRF → Ping → Routing Table → BGP / Policy</div>
    <div id="router-command-count" class="router-command-count"></div>
    <div id="router-command-list" class="router-command-grid"></div>
   </div>
  </div>
 </div>
-<script>
-window.ROUTER_COMMANDS = <?= json_encode($router_commands_payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-</script>
 <?php endif; ?>
