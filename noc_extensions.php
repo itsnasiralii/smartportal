@@ -57,7 +57,7 @@ function handover($rows) {
     return implode("\n", $lines);
 }
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' && !in_array($action, ['get_dashboard', 'get_vendor_matrix', 'list_complaints', 'outage_history', 'download_report', 'get_vpbx_data', 'get_vpbx_ivrs', 'search_nms_clients', 'get_nms_client', 'export_nms_clients', 'get_router_meta', 'get_router_commands', 'get_router_inventory_meta', 'get_router_inventory'])) {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' && !in_array($action, ['get_dashboard', 'get_vendor_matrix', 'list_complaints', 'outage_history', 'download_report', 'get_vpbx_data', 'get_vpbx_ivrs', 'search_nms_clients', 'get_nms_client', 'export_nms_clients', 'get_router_meta', 'get_router_commands', 'get_router_inventory_meta', 'get_router_inventory', 'search_router_inventory'])) {
     http_response_code(405); reply(['success' => false, 'message' => 'Use POST for this action.']);
 }
 // Serialize complaint changes across team sessions, as in the Python shared-state lock.
