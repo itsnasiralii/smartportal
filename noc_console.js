@@ -1892,6 +1892,8 @@ function handleRouterClientChange() {
     $('router-interface-filter').value = '';
     $('router-peer-filter').value = '';
     clearRouterRuntimeValues();
+    handleRouterPolicyChange();
+    handleRouterPrefixChange();
     populateRouterInventoryVrfOptions();
     populateRouterInterfaceOptions();
     populateRouterPeerOptions();
@@ -1903,6 +1905,8 @@ function handleRouterInventoryVrfChange() {
     $('router-interface-filter').value = '';
     $('router-peer-filter').value = '';
     clearRouterRuntimeValues();
+    handleRouterPolicyChange();
+    handleRouterPrefixChange();
     const vrf = val('router-inventory-vrf');
     if ($('router-vrf')) $('router-vrf').value = vrf;
     populateRouterInterfaceOptions();
