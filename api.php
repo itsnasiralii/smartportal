@@ -37,6 +37,7 @@ $action_permissions = [
     'get_router_commands' => ['router'],
     'get_router_inventory_meta' => ['router'],
     'get_router_inventory' => ['router'],
+    'search_router_inventory' => ['router'],
     'get_vpbx_data' => ['vpbx'],
     'add_vpbx_outgoing' => ['vpbx'],
     'update_vpbx_outgoing' => ['vpbx'],
@@ -815,6 +816,50 @@ if ($action === 'get_router_inventory_meta') {
     ")->fetchAll(PDO::FETCH_ASSOC);
 
     echo json_encode(['success' => true, 'devices' => $devices]);
+    exit;
+}
+
+if ($action === 'search_router_inventory') {
+    $q = trim($_GET['q'] ?? '');
+    if (mb_strlen($q) < 2) {
+        echo json_encode(['success' => true, 'records' => []]);
+        exit;
+    }
+
+    $like = '%' . $q . '%';
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT
+               d.id AS device_id, d.hostname, d.platform, d.role, d.site_code,
+               i.id AS interface_id, i.interface_name, i.client_name, i.service_type,
+               i.site_name, i.link_id, i.vlan_id, i.vrf, i.bandwidth_label,
+               ip.ip_address, ip.prefix_length
+        FROM router_interfaces i
+        JOIN router_devices d ON d.id = i.device_id
+        LEFT JOIN router_interface_ips ip ON ip.interface_id = i.id
+        WHERE d.hostname LIKE ?
+           OR i.client_name LIKE ?
+           OR i.service_type LIKE ?
+           OR i.site_name LIKE ?
+           OR i.link_id LIKE ?
+           OR i.vlan_id LIKE ?
+           OR i.vrf LIKE ?
+           OR i.interface_name LIKE ?
+           OR i.description LIKE ?
+           OR ip.ip_address LIKE ?
+        ORDER BY
+            CASE WHEN i.client_name LIKE ? THEN 0
+                 WHEN i.link_id LIKE ? THEN 1
+                 WHEN ip.ip_address LIKE ? THEN 2
+                 ELSE 3 END,
+            d.hostname COLLATE NOCASE, i.client_name COLLATE NOCASE, i.site_name COLLATE NOCASE
+        LIMIT 60
+    ");
+    $stmt->execute([
+        $like,$like,$like,$like,$like,$like,$like,$like,$like,$like,
+        $like,$like,$like
+    ]);
+
+    echo json_encode(['success' => true, 'records' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
     exit;
 }
 
