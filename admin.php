@@ -239,46 +239,84 @@ if ($authenticated && isset($_POST['del_router_command'])) {
     }
 }
 
-// IMPORT SANITIZED ROUTER CONFIGURATION INTO INVENTORY
+// IMPORT SANITIZED ROUTER CONFIGURATION(S) INTO INVENTORY
 if ($authenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'import_router_config') {
     $active_admin_tab = 'tab-admin-router';
     $hostnameOverride = trim($_POST['inventory_hostname'] ?? '');
-    $configText = trim($_POST['router_config_text'] ?? '');
-    $sourceName = 'Pasted configuration';
+    $pastedConfig = trim($_POST['router_config_text'] ?? '');
+    $imports = [];
+    $errors = [];
 
-    if (!empty($_FILES['router_config_file']['name'])) {
-        $upload = $_FILES['router_config_file'];
-        if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            $status_msg = 'Router configuration upload failed.';
-        } elseif (($upload['size'] ?? 0) > 8 * 1024 * 1024) {
-            $status_msg = 'Router configuration file must be smaller than 8 MB.';
-        } else {
-            $sourceName = basename((string)$upload['name']);
-            $configText = (string)file_get_contents($upload['tmp_name']);
+    $uploadedNames = $_FILES['router_config_files']['name'] ?? [];
+    $uploadedTemps = $_FILES['router_config_files']['tmp_name'] ?? [];
+    $uploadedSizes = $_FILES['router_config_files']['size'] ?? [];
+    $uploadedErrors = $_FILES['router_config_files']['error'] ?? [];
+
+    if (!is_array($uploadedNames)) {
+        $uploadedNames = [$uploadedNames];
+        $uploadedTemps = [$uploadedTemps];
+        $uploadedSizes = [$uploadedSizes];
+        $uploadedErrors = [$uploadedErrors];
+    }
+
+    foreach ($uploadedNames as $idx => $name) {
+        if (trim((string)$name) === '') continue;
+        $error = $uploadedErrors[$idx] ?? UPLOAD_ERR_NO_FILE;
+        $size = (int)($uploadedSizes[$idx] ?? 0);
+        $tmp = (string)($uploadedTemps[$idx] ?? '');
+
+        if ($error !== UPLOAD_ERR_OK) {
+            $errors[] = basename((string)$name) . ': upload failed';
+            continue;
+        }
+        if ($size <= 0 || $size > 8 * 1024 * 1024) {
+            $errors[] = basename((string)$name) . ': file must be between 1 byte and 8 MB';
+            continue;
+        }
+
+        $contents = (string)file_get_contents($tmp);
+        if (trim($contents) === '') {
+            $errors[] = basename((string)$name) . ': empty configuration';
+            continue;
+        }
+
+        try {
+            // Hostname override is only safe for a single import; batch files use their own sysname.
+            $override = count(array_filter($uploadedNames)) === 1 && $pastedConfig === '' ? $hostnameOverride : '';
+            $imports[] = router_import_config($pdo, $contents, basename((string)$name), $override);
+        } catch (Throwable $e) {
+            error_log((string)$e);
+            $errors[] = basename((string)$name) . ': parser/import error';
         }
     }
 
-    if ($status_msg === '') {
-        if ($configText === '') {
-            $status_msg = 'Upload a router configuration file or paste the configuration text.';
-        } else {
-            try {
-                $summary = router_import_config($pdo, $configText, $sourceName, $hostnameOverride);
-                $status_msg = sprintf(
-                    'Imported %s (%s): %d interfaces, %d VRFs, %d BGP peers, %d prefix lists and %d route policies.',
-                    $summary['hostname'],
-                    $summary['platform'],
-                    $summary['interfaces'],
-                    $summary['vrfs'],
-                    $summary['bgp_peers'],
-                    $summary['prefix_lists'],
-                    $summary['route_policies']
-                );
-            } catch (Throwable $e) {
-                error_log((string)$e);
-                $status_msg = 'Router configuration could not be imported. Check the configuration format and server log.';
-            }
+    if ($pastedConfig !== '') {
+        try {
+            $imports[] = router_import_config($pdo, $pastedConfig, 'Pasted configuration', $hostnameOverride);
+        } catch (Throwable $e) {
+            error_log((string)$e);
+            $errors[] = 'Pasted configuration: parser/import error';
         }
+    }
+
+    if (!$imports && !$errors) {
+        $status_msg = 'Upload one or more router configuration files or paste a configuration.';
+    } else {
+        $parts = [];
+        foreach ($imports as $summary) {
+            $parts[] = sprintf(
+                '%s: %d clients, %d interfaces, %d VRFs, %d BGP peers, %d QoS profiles, %d static routes',
+                $summary['hostname'],
+                $summary['clients'],
+                $summary['interfaces'],
+                $summary['vrfs'],
+                $summary['bgp_peers'],
+                $summary['qos_profiles'],
+                $summary['static_routes']
+            );
+        }
+        if ($errors) $parts[] = 'Warnings: ' . implode('; ', $errors);
+        $status_msg = implode(' | ', $parts);
     }
 }
 
@@ -314,15 +352,17 @@ $nms_total_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_c
 $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_clients WHERE is_zte = 1")->fetchColumn() : 0;
 $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_commands ORDER BY platform COLLATE NOCASE, category COLLATE NOCASE, sort_order ASC, title COLLATE NOCASE")->fetchAll() : [];
 $router_devices_admin = $authenticated ? $pdo->query("
-    SELECT d.id, d.hostname, d.platform, d.source_name, d.imported_at,
-           COUNT(DISTINCT i.id) AS interface_count,
-           COUNT(DISTINCT v.id) AS vrf_count,
-           COUNT(DISTINCT p.id) AS peer_count
+    SELECT d.id, d.hostname, d.platform, d.role, d.site_code, d.software_version, d.router_id, d.bgp_asn,
+           d.source_name, d.imported_at,
+           (SELECT COUNT(*) FROM router_interfaces i WHERE i.device_id = d.id) AS interface_count,
+           (SELECT COUNT(DISTINCT client_name) FROM router_interfaces i WHERE i.device_id = d.id AND TRIM(COALESCE(client_name,'')) <> '') AS client_count,
+           (SELECT COUNT(*) FROM router_vrfs v WHERE v.device_id = d.id) AS vrf_count,
+           (SELECT COUNT(*) FROM router_bgp_peers p WHERE p.device_id = d.id) AS peer_count,
+           (SELECT COUNT(*) FROM router_qos_profiles q WHERE q.device_id = d.id) AS qos_count,
+           (SELECT COUNT(*) FROM router_static_routes s WHERE s.device_id = d.id) AS static_route_count,
+           (SELECT COUNT(*) FROM router_ospf_processes o WHERE o.device_id = d.id) AS ospf_count,
+           (SELECT COUNT(*) FROM router_isis_processes x WHERE x.device_id = d.id) AS isis_count
     FROM router_devices d
-    LEFT JOIN router_interfaces i ON i.device_id = d.id
-    LEFT JOIN router_vrfs v ON v.device_id = d.id
-    LEFT JOIN router_bgp_peers p ON p.device_id = d.id
-    GROUP BY d.id
     ORDER BY d.hostname COLLATE NOCASE
 ")->fetchAll() : [];
 ?>
@@ -858,7 +898,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
                 <div class="panel-card" style="margin-bottom:20px; border-left:5px solid #2563eb;">
                     <div class="panel-header">
                         <h2>📥 Router Configuration Inventory</h2>
-                        <p>Upload or paste a sanitized Huawei configuration. The parser builds Router → Client → VRF → Interface → IP / BGP peer dropdown data automatically.</p>
+                        <p>Upload one or many sanitized Huawei configurations. Only high-value operational facts are stored: Router → Client → Service/Site → VRF → Interface → IP/Peer → QoS/Policies/Routing.</p>
                     </div>
                     <div class="panel-body">
                         <form method="POST" action="admin.php" enctype="multipart/form-data">
@@ -867,9 +907,9 @@ $router_devices_admin = $authenticated ? $pdo->query("
 
                             <div class="form-row">
                                 <div class="form-group col-half">
-                                    <label>Configuration File</label>
-                                    <input type="file" name="router_config_file" accept=".txt,.cfg,.conf,.log">
-                                    <small>TXT/CFG/CONF/LOG, maximum 8 MB.</small>
+                                    <label>Configuration Files</label>
+                                    <input type="file" name="router_config_files[]" accept=".txt,.cfg,.conf,.log" multiple>
+                                    <small>Upload multiple routers together. TXT/CFG/CONF/LOG, maximum 8 MB each.</small>
                                 </div>
                                 <div class="form-group col-half">
                                     <label>Hostname Override (Optional)</label>
@@ -882,7 +922,10 @@ $router_devices_admin = $authenticated ? $pdo->query("
                                 <textarea name="router_config_text" rows="7" placeholder="sysname KHI-PE-NE40EX8A-B1&#10;#&#10;interface Eth-Trunk31.846&#10; description ...&#10; vlan-type dot1q 846&#10; ip binding vpn-instance CUSTOMER_VRF&#10; ip address 192.0.2.1 255.255.255.252"></textarea>
                             </div>
 
-                            <button type="submit" class="btn-primary">⚙️ Parse &amp; Store Router Inventory</button>
+                            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                                <button type="submit" class="btn-primary">⚙️ Parse &amp; Store Router Inventory</button>
+                                <small style="color:#64748b;">Raw configs are not stored. Authentication/cipher/RSA/SNMP/AAA lines are not persisted by the inventory parser.</small>
+                            </div>
                         </form>
 
                         <h3 style="margin:28px 0 12px;">Stored Routers (<?= count($router_devices_admin ?? []) ?>)</h3>
@@ -891,10 +934,12 @@ $router_devices_admin = $authenticated ? $pdo->query("
                                 <thead>
                                     <tr>
                                         <th>Router</th>
-                                        <th>Platform</th>
-                                        <th>Interfaces</th>
-                                        <th>VRFs</th>
-                                        <th>BGP Peers</th>
+                                        <th>Role / Site</th>
+                                        <th>Platform / Software</th>
+                                        <th>Clients</th>
+                                        <th>Interfaces / VRFs</th>
+                                        <th>Routing</th>
+                                        <th>QoS / Static</th>
                                         <th>Source</th>
                                         <th>Imported</th>
                                         <th>Action</th>
@@ -903,11 +948,19 @@ $router_devices_admin = $authenticated ? $pdo->query("
                                 <tbody>
                                 <?php foreach (($router_devices_admin ?? []) as $device): ?>
                                     <tr>
-                                        <td><strong><?= htmlspecialchars($device['hostname']) ?></strong></td>
-                                        <td><?= htmlspecialchars($device['platform'] ?: 'Huawei') ?></td>
-                                        <td><?= (int)$device['interface_count'] ?></td>
-                                        <td><?= (int)$device['vrf_count'] ?></td>
-                                        <td><?= (int)$device['peer_count'] ?></td>
+                                        <td>
+                                            <strong><?= htmlspecialchars($device['hostname']) ?></strong>
+                                            <div style="font-size:11px;color:#64748b;"><?= htmlspecialchars($device['router_id'] ?: 'No router-id') ?><?= !empty($device['bgp_asn']) ? ' • AS' . htmlspecialchars($device['bgp_asn']) : '' ?></div>
+                                        </td>
+                                        <td><?= htmlspecialchars(trim(($device['site_code'] ?: '') . ' ' . ($device['role'] ?: 'Router'))) ?></td>
+                                        <td>
+                                            <?= htmlspecialchars($device['platform'] ?: 'Huawei') ?>
+                                            <div style="font-size:11px;color:#64748b;"><?= htmlspecialchars($device['software_version'] ?: '—') ?></div>
+                                        </td>
+                                        <td><?= (int)$device['client_count'] ?></td>
+                                        <td><?= (int)$device['interface_count'] ?> / <?= (int)$device['vrf_count'] ?></td>
+                                        <td><?= (int)$device['peer_count'] ?> BGP • <?= (int)$device['ospf_count'] ?> OSPF • <?= (int)$device['isis_count'] ?> IS-IS</td>
+                                        <td><?= (int)$device['qos_count'] ?> QoS • <?= (int)$device['static_route_count'] ?> static</td>
                                         <td><?= htmlspecialchars($device['source_name'] ?: '—') ?></td>
                                         <td><?= htmlspecialchars($device['imported_at'] ?: '—') ?></td>
                                         <td>
@@ -920,7 +973,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
                                     </tr>
                                 <?php endforeach; ?>
                                 <?php if (empty($router_devices_admin)): ?>
-                                    <tr><td colspan="8" style="text-align:center; padding:22px; color:#64748b;">No router configurations imported yet.</td></tr>
+                                    <tr><td colspan="10" style="text-align:center; padding:22px; color:#64748b;">No router configurations imported yet.</td></tr>
                                 <?php endif; ?>
                                 </tbody>
                             </table>
@@ -960,7 +1013,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
                             <div class="form-group">
                                 <label>Command Template *</label>
                                 <input type="text" name="router_template" required placeholder="display arp interface Vlanif {vlan}">
-                                <small>Supported variables: {vlan}, {trunk}, {ip}, {vrf}, {peer_ip}, {search}, {policy}, {prefix}</small>
+                                <small>Supported variables: {interface}, {vlan}, {trunk}, {ip}, {vrf}, {peer_ip}, {search}, {policy}, {prefix}</small>
                             </div>
                             <div class="form-group">
                                 <label>Description</label>
