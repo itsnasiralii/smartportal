@@ -1690,8 +1690,10 @@ async function searchRouterInventoryGlobal() {
 }
 
 async function handleRouterGlobalResult() {
-    const index = Number(val('router-global-results'));
-    if (!Number.isFinite(index) || !routerGlobalSearchRecords[index]) return;
+    const rawIndex = val('router-global-results');
+    if (rawIndex === '') return;
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || !routerGlobalSearchRecords[index]) return;
     const row = routerGlobalSearchRecords[index];
 
     const deviceSelect = $('router-device-filter');
