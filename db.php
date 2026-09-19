@@ -593,6 +593,14 @@ if ($use_sqlite) {
                 ['Selected interface configuration', 'NE40E / NE40EX8', 'Interface', 'display current-configuration interface {interface}', 'Show the complete selected interface configuration.', 6],
                 ['VRF routing table', 'NE40E / NE40EX8', 'Routing', 'display ip routing-table vpn-instance {vrf}', 'Show the routing table for the selected VPN-instance.', 5],
                 ['VRF BGP routing table', 'NE40E / EGW', 'BGP', 'display bgp vpnv4 vpn-instance {vrf} routing-table', 'Show BGP routes installed for the selected VPN-instance.', 5],
+                ['VRF BGP routing table', 'NE40E / NE40EX8', 'BGP', 'display bgp vpnv4 vpn-instance {vrf} routing-table', 'Show BGP routes installed for the selected VPN-instance.', 5],
+                ['BGP received routes', 'NE40E / NE40EX8', 'BGP', 'display bgp vpnv4 vpn-instance {vrf} routing-table peer {peer_ip} received-routes', 'Display routes received from a selected BGP peer.', 20],
+                ['BGP advertised routes', 'NE40E / NE40EX8', 'BGP', 'display bgp vpnv4 vpn-instance {vrf} routing-table peer {peer_ip} advertised-routes', 'Display routes advertised to a selected BGP peer.', 30],
+                ['Selected interface status', 'NE40E / EGW', 'Interface', 'display interface {interface}', 'Show status, counters and errors for the selected interface.', 5],
+                ['Selected interface ARP', 'NE40E / EGW', 'ARP', 'display arp interface {interface}', 'Check Layer-2 adjacency on the selected interface.', 5],
+                ['Selected interface configuration', 'NE40E / EGW', 'Interface', 'display current-configuration interface {interface}', 'Show the selected interface configuration.', 6],
+                ['VRF route lookup', 'NE40E / EGW', 'Routing', 'display ip routing-table vpn-instance {vrf} {ip}', 'Check a destination route inside the selected VPN-instance.', 10],
+                ['VPN-instance ping', 'NE40E / EGW', 'Ping / Reachability', 'ping -vpn-instance {vrf} {ip}', 'Ping a destination from the selected VPN-instance.', 10],
                 ['Selected Vlanif configuration', 'S9306', 'Interface', 'display current-configuration interface {interface}', 'Show the complete configuration of the selected Vlanif.', 5],
                 ['Selected Vlanif ARP', 'S9306', 'ARP', 'display arp interface {interface}', 'Check ARP entries on the selected Vlanif.', 5]
             ];
