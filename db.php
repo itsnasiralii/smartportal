@@ -326,6 +326,58 @@ if ($use_sqlite) {
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_nms_username ON nms_clients(dashboard_username)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_nms_is_zte ON nms_clients(is_zte)");
 
+        // 9. Router command library — database-backed and admin-manageable
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_commands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                platform TEXT NOT NULL COLLATE NOCASE,
+                category TEXT NOT NULL COLLATE NOCASE,
+                command_template TEXT NOT NULL,
+                description TEXT,
+                is_active INTEGER DEFAULT 1,
+                sort_order INTEGER DEFAULT 100,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_commands_platform ON router_commands(platform)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_commands_category ON router_commands(category)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_commands_active ON router_commands(is_active)");
+
+        $router_command_count = (int)$pdo->query("SELECT COUNT(*) FROM router_commands")->fetchColumn();
+        if ($router_command_count === 0) {
+            $router_seed = [
+                ['Find VLAN / service in configuration', 'NE40E / NE40EX8', 'Discovery', 'display current-configuration | i {search}', 'Search configuration for a VLAN, IP, interface suffix or service keyword.', 10],
+                ['Interface brief', 'NE40E / NE40EX8', 'Interface', 'display interface brief', 'Quick view of physical/protocol state, utilization and errors.', 10],
+                ['Eth-Trunk sub-interface status', 'NE40E / NE40EX8', 'Interface', 'display interface Eth-Trunk{trunk}.{vlan}', 'Check state, traffic, errors and encapsulation.', 20],
+                ['Eth-Trunk sub-interface configuration', 'NE40E / NE40EX8', 'Interface', 'display current-configuration interface Eth-Trunk{trunk}.{vlan}', 'Show VLAN tagging, VPN-instance, IP and applied policies.', 30],
+                ['ARP on Eth-Trunk sub-interface', 'NE40E / NE40EX8', 'ARP', 'display arp interface Eth-Trunk{trunk}.{vlan}', 'Verify Layer-2 adjacency and peer MAC learning.', 10],
+                ['VPN-instance ping', 'NE40E / NE40EX8', 'Ping / Reachability', 'ping -vpn-instance {vrf} {ip}', 'Ping from the correct VPN-instance.', 10],
+                ['VRF route lookup', 'NE40E / NE40EX8', 'Routing', 'display ip routing-table vpn-instance {vrf} {ip}', 'Check the route for a destination inside a VPN-instance.', 10],
+                ['BGP VPN peer status', 'NE40E / EGW', 'BGP', 'display bgp vpnv4 vpn-instance {vrf} peer | I {peer_ip}', 'Check BGP peer state and prefix count.', 10],
+                ['BGP received routes', 'NE40E / EGW', 'BGP', 'display bgp vpnv4 vpn-instance {vrf} routing-table peer {peer_ip} received-routes', 'Display routes received from a BGP peer.', 20],
+                ['BGP advertised routes', 'NE40E / EGW', 'BGP', 'display bgp vpnv4 vpn-instance {vrf} routing-table peer {peer_ip} advertised-routes', 'Display routes advertised to a BGP peer.', 30],
+                ['Route-policy details', 'NE40E / EGW', 'BGP Policy', 'display route-policy {policy}', 'Inspect route-policy nodes and match clauses.', 10],
+                ['IP prefix-list details', 'NE40E / EGW', 'BGP Policy', 'display ip ip-prefix {prefix}', 'Inspect an IP prefix-list.', 20],
+                ['Candidate configuration changes', 'NE40E / EGW', 'Safety / Review', 'display configuration candidate changes', 'Review uncommitted candidate changes.', 10],
+                ['Vlanif interface status', 'S9306', 'Interface', 'display interface Vlanif {vlan}', 'Check Vlanif state, traffic and errors.', 10],
+                ['Vlanif IP details', 'S9306', 'Interface', 'display ip interface Vlanif {vlan}', 'Show interface addressing and IP counters.', 20],
+                ['Vlanif configuration', 'S9306', 'Interface', 'display current-configuration interface Vlanif{vlan}', 'Show Vlanif addressing, VPN-instance and policies.', 30],
+                ['ARP on Vlanif', 'S9306', 'ARP', 'display arp interface Vlanif {vlan}', 'Check ARP resolution on a Vlanif.', 10],
+                ['Find IP interface', 'S9306', 'Discovery', 'display ip interface brief | include {ip}', 'Find which interface owns or references an IP.', 10],
+                ['Search current configuration', 'S9306', 'Discovery', 'display current-configuration | include {search}', 'Search configuration for an IP, VLAN or keyword.', 20],
+                ['Interface description search', 'S9306', 'Discovery', 'display interface description | include {search}', 'Locate an interface by service label or keyword.', 30],
+                ['Global route lookup', 'S9306', 'Routing', 'display ip routing-table {ip}', 'Check the routing-table entry for a destination.', 10],
+                ['Standard ping', 'S9306', 'Ping / Reachability', 'ping {ip}', 'Basic global-table reachability test.', 10],
+                ['VPN-instance ping', 'S9306', 'Ping / Reachability', 'ping -vpn-instance {vrf} {ip}', 'Reachability test inside a VPN-instance.', 20],
+            ];
+            $router_seed_stmt = $pdo->prepare("INSERT INTO router_commands (title, platform, category, command_template, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
+            foreach ($router_seed as $router_row) {
+                $router_seed_stmt->execute($router_row);
+            }
+        }
+
         $NOC_FEATURES = [
             'complaints' => '📁 Complaint Manager',
             'opening' => '🚨 Opening',
