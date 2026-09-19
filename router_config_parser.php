@@ -88,7 +88,8 @@ function router_parse_service_metadata(string $description, string $vrf): array 
             $payload = str_ireplace($bm[0], '', $payload);
         }
 
-        $payload = trim(preg_replace('/[_\s]+/', ' ', str_replace(['***','**'], '', $payload)), " _-");
+        $payload = trim(str_replace(['***','**'], '', $payload), " _-");
+        $payload = preg_replace('/\s+/', ' ', $payload);
         $vrfClient = router_guess_client_from_vrf($vrf);
 
         if ($vrfClient !== '' && preg_match('/^' . preg_quote($vrfClient, '/') . '(?:\s+|[-\/]+)(.+)$/i', $payload, $sm)) {
