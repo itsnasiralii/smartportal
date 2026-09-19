@@ -239,3 +239,27 @@ small { overflow-wrap:anywhere; }
  word-break: break-word;
 }
 
+
+
+/* Router Commands Library */
+.router-command-header{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.router-eyebrow{color:#059669;font-size:.75rem;letter-spacing:.1em;font-weight:800;text-transform:uppercase;margin-bottom:5px}
+.router-readonly-badge{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:999px;padding:7px 12px;font-size:.75rem;font-weight:800}
+.router-command-toolbar{display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px}
+.router-variable-panel{margin-top:18px;padding:18px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}
+.router-variable-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.router-variable-title strong{display:block}.router-variable-title small{display:block;color:#64748b;margin-top:3px}
+.router-variable-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.router-variable-grid .form-group{margin-bottom:0}
+.router-flow-note{margin:18px 0;padding:12px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;color:#92400e;font-size:.88rem}
+.router-command-count{color:#64748b;font-size:.85rem;font-weight:600;margin:12px 0}
+.router-command-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.router-command-card{border:1px solid #e2e8f0;border-radius:10px;padding:16px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+.router-command-card-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.router-command-card h3{margin-top:8px;font-size:1rem;color:#0f172a}.router-command-card p{margin:8px 0 12px;color:#64748b;font-size:.84rem;line-height:1.5}
+.router-command-tags{display:flex;gap:6px;flex-wrap:wrap}.router-tag{display:inline-block;background:#f1f5f9;color:#475569;border-radius:999px;padding:3px 8px;font-size:.7rem;font-weight:700}.router-tag.platform{background:#ecfdf5;color:#047857}
+.router-command-status{border-radius:999px;padding:4px 8px;font-size:.7rem;font-weight:700;white-space:nowrap}.router-command-status.ready{background:#dcfce7;color:#166534}.router-command-status.pending{background:#fef3c7;color:#92400e}
+.router-command-output{white-space:pre-wrap;word-break:break-word;background:#0f172a;color:#e2e8f0;padding:12px 14px;border-radius:8px;font:600 .84rem/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;min-height:48px}
+.router-command-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px}.router-command-actions small{color:#94a3b8;font-size:.7rem;text-align:right;word-break:break-word}
+.router-empty-state{grid-column:1/-1;padding:30px;text-align:center;color:#64748b;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px}
+@media(max-width:960px){.router-command-toolbar{grid-template-columns:1fr}.router-variable-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.router-command-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.router-variable-grid{grid-template-columns:1fr}.router-command-actions{align-items:flex-start;flex-direction:column}.router-command-actions small{text-align:left}}
