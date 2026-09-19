@@ -15,6 +15,7 @@ function router_mask_to_prefix(string $mask): int {
 function router_guess_platform(string $hostname, string $config): string {
     $haystack = strtoupper($hostname . "\n" . substr($config, 0, 12000));
     if (str_contains($haystack, 'S9306') || str_contains($haystack, 'S9300')) return 'S9306';
+    if (str_contains($haystack, 'NE40') && str_contains($haystack, 'EGW')) return 'NE40E / EGW';
     if (str_contains($haystack, 'NE40')) return 'NE40E / NE40EX8';
     if (str_contains($haystack, 'S12700')) return 'S12700';
     if (str_contains($haystack, 'E8000') || str_contains($haystack, 'E9000')) return 'Huawei Edge';
