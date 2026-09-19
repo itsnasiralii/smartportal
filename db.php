@@ -345,9 +345,12 @@ if ($use_sqlite) {
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_commands_category ON router_commands(category)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_commands_active ON router_commands(is_active)");
 
-        $router_command_count = (int)$pdo->query("SELECT COUNT(*) FROM router_commands")->fetchColumn();
-        if ($router_command_count === 0) {
-            $router_seed = [
+        $pdo->exec("CREATE TABLE IF NOT EXISTS router_command_meta (meta_key TEXT PRIMARY KEY, meta_value TEXT)");
+        $router_seeded = $pdo->query("SELECT meta_value FROM router_command_meta WHERE meta_key = 'seeded_v1' LIMIT 1")->fetchColumn();
+        if (!$router_seeded) {
+            $router_command_count = (int)$pdo->query("SELECT COUNT(*) FROM router_commands")->fetchColumn();
+            if ($router_command_count === 0) {
+                $router_seed = [
                 ['Find VLAN / service in configuration', 'NE40E / NE40EX8', 'Discovery', 'display current-configuration | i {search}', 'Search configuration for a VLAN, IP, interface suffix or service keyword.', 10],
                 ['Interface brief', 'NE40E / NE40EX8', 'Interface', 'display interface brief', 'Quick view of physical/protocol state, utilization and errors.', 10],
                 ['Eth-Trunk sub-interface status', 'NE40E / NE40EX8', 'Interface', 'display interface Eth-Trunk{trunk}.{vlan}', 'Check state, traffic, errors and encapsulation.', 20],
@@ -373,9 +376,11 @@ if ($use_sqlite) {
                 ['VPN-instance ping', 'S9306', 'Ping / Reachability', 'ping -vpn-instance {vrf} {ip}', 'Reachability test inside a VPN-instance.', 20],
             ];
             $router_seed_stmt = $pdo->prepare("INSERT INTO router_commands (title, platform, category, command_template, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
-            foreach ($router_seed as $router_row) {
-                $router_seed_stmt->execute($router_row);
+                foreach ($router_seed as $router_row) {
+                    $router_seed_stmt->execute($router_row);
+                }
             }
+            $pdo->prepare("INSERT OR REPLACE INTO router_command_meta (meta_key, meta_value) VALUES ('seeded_v1', ?)")->execute([date('c')]);
         }
 
         $NOC_FEATURES = [
