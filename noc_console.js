@@ -1613,6 +1613,7 @@ function routerCommandValues() {
     return {
         vlan: val('router-vlan'),
         trunk: val('router-trunk'),
+        interface: val('router-interface-name'),
         ip: val('router-ip'),
         vrf: val('router-vrf'),
         peer_ip: val('router-peer-ip'),
@@ -1642,9 +1643,7 @@ async function loadRouterWorkspace() {
 }
 
 async function loadRouterCommandMeta() {
-    if (!$('router-platform-filter')) return;
-    if (routerCommandMeta) return;
-
+    if (!$('router-platform-filter') || routerCommandMeta) return;
     const response = await fetch('api.php?' + new URLSearchParams({action:'get_router_meta'}));
     const result = await response.json();
     if (!response.ok || !result.success) {
@@ -1653,14 +1652,14 @@ async function loadRouterCommandMeta() {
     }
 
     routerCommandMeta = result;
-    const platformSelect = $('router-platform-filter');
-    platformSelect.replaceChildren(new Option('Select Router / Platform', ''));
-    (result.platforms || []).forEach(platform => platformSelect.add(new Option(platform, platform)));
+    const select = $('router-platform-filter');
+    select.replaceChildren(new Option('Select Router / Platform', ''));
+    (result.platforms || []).forEach(platform => select.add(new Option(platform, platform)));
 }
 
 async function loadRouterInventoryMeta() {
-    const deviceSelect = $('router-device-filter');
-    if (!deviceSelect || routerInventoryMeta) return;
+    const select = $('router-device-filter');
+    if (!select || routerInventoryMeta) return;
 
     const response = await fetch('api.php?' + new URLSearchParams({action:'get_router_inventory_meta'}));
     const result = await response.json();
@@ -1670,12 +1669,15 @@ async function loadRouterInventoryMeta() {
     }
 
     routerInventoryMeta = result;
-    deviceSelect.replaceChildren(new Option('Select Stored Router', ''));
+    select.replaceChildren(new Option('Select Stored Router', ''));
     (result.devices || []).forEach(device => {
-        const label = device.hostname + (device.platform ? ' — ' + device.platform : '');
+        const location = [device.site_code, device.role].filter(Boolean).join(' ');
+        const label = device.hostname +
+            (location ? ' — ' + location : '') +
+            (device.client_count ? ' • ' + device.client_count + ' clients' : '');
         const option = new Option(label, String(device.id));
         option.dataset.platform = device.platform || '';
-        deviceSelect.add(option);
+        select.add(option);
     });
 }
 
@@ -1687,14 +1689,31 @@ function normalizeRouterInventory(result) {
             map.set(key, {
                 id: Number(row.id),
                 interface_name: row.interface_name || '',
+                interface_type: row.interface_type || '',
+                parent_interface: row.parent_interface || '',
                 description: row.description || '',
                 client_name: row.client_name || '',
+                service_type: row.service_type || '',
+                site_name: row.site_name || '',
+                link_id: row.link_id || '',
+                bandwidth_label: row.bandwidth_label || '',
                 vlan_id: row.vlan_id || '',
                 vrf: row.vrf || '',
                 bandwidth_kbps: row.bandwidth_kbps || '',
+                qos_in_profile: row.qos_in_profile || '',
+                qos_out_profile: row.qos_out_profile || '',
+                qos_in_cir_kbps: Number(row.qos_in_cir_kbps || 0),
+                qos_in_pir_kbps: Number(row.qos_in_pir_kbps || 0),
+                qos_out_cir_kbps: Number(row.qos_out_cir_kbps || 0),
+                qos_out_pir_kbps: Number(row.qos_out_pir_kbps || 0),
+                mtu: row.mtu || '',
+                ospf_cost: row.ospf_cost || '',
+                ospf_network_type: row.ospf_network_type || '',
+                isis_process: row.isis_process || '',
                 ips: []
             });
         }
+
         if (row.ip_address) {
             map.get(key).ips.push({
                 ip_address: row.ip_address,
@@ -1720,8 +1739,15 @@ function normalizeRouterInventory(result) {
         interfaces,
         peers: Array.isArray(result.peers) ? result.peers : [],
         vrfs: Array.isArray(result.vrfs) ? result.vrfs : [],
+        vrf_details: Array.isArray(result.vrf_details) ? result.vrf_details : [],
         prefix_lists: Array.isArray(result.prefix_lists) ? result.prefix_lists : [],
-        route_policies: Array.isArray(result.route_policies) ? result.route_policies : []
+        prefix_details: Array.isArray(result.prefix_details) ? result.prefix_details : [],
+        route_policies: Array.isArray(result.route_policies) ? result.route_policies : [],
+        route_policy_details: Array.isArray(result.route_policy_details) ? result.route_policy_details : [],
+        qos_profiles: Array.isArray(result.qos_profiles) ? result.qos_profiles : [],
+        ospf_processes: Array.isArray(result.ospf_processes) ? result.ospf_processes : [],
+        isis_processes: Array.isArray(result.isis_processes) ? result.isis_processes : [],
+        facts: result.facts || {}
     };
 }
 
@@ -1730,9 +1756,10 @@ async function handleRouterDeviceChange() {
     resetRouterInventorySelectors(false);
     routerInventory = null;
     clearRouterRuntimeValues();
+    renderRouterPeakSummary();
 
     if (!deviceId) {
-        setRouterHint('You can select a stored router to auto-fill client/VRF/interface/IP data, or use the command selector manually.');
+        setRouterHint('Select a stored router to load its clients, VRFs, interfaces and IP context.');
         updateRouterVariableVisibility();
         renderRouterCommands();
         return;
@@ -1747,11 +1774,14 @@ async function handleRouterDeviceChange() {
 
     routerInventory = normalizeRouterInventory(result);
     populateRouterClientOptions();
+    populateRouterServiceOptions();
+    populateRouterSiteOptions();
     populateRouterInventoryVrfOptions();
     populateRouterInterfaceOptions();
     populateRouterPeerOptions();
     populateRouterPolicyOptions();
     populateRouterPrefixOptions();
+    renderRouterPeakSummary();
 
     await loadRouterCommandMeta();
     const platform = routerInventory.device?.platform || '';
@@ -1760,24 +1790,27 @@ async function handleRouterDeviceChange() {
         handleRouterPlatformChange(true);
     }
 
+    const facts = routerInventory.facts || {};
     setRouterHint(
         (routerInventory.device?.hostname || 'Router') +
-        ': ' + routerInventory.interfaces.length + ' interfaces, ' +
-        routerInventory.vrfs.length + ' VRFs, ' +
-        routerInventory.peers.length + ' BGP peers loaded.'
+        ': ' + Number(facts.clients || 0) + ' clients • ' +
+        Number(facts.vrfs || 0) + ' VRFs • ' +
+        Number(facts.interfaces || 0) + ' interfaces.'
     );
+}
+
+function routerClientLabel(iface) {
+    return iface.client_name || '';
 }
 
 function routerInterfaceLabel(iface) {
     const bits = [iface.interface_name];
+    if (iface.client_name) bits.push(iface.client_name);
+    if (iface.site_name) bits.push(iface.site_name);
     if (iface.vlan_id) bits.push('VLAN ' + iface.vlan_id);
     if (iface.vrf) bits.push(iface.vrf);
     if (iface.primary_ip) bits.push(iface.primary_ip + (iface.prefix_length ? '/' + iface.prefix_length : ''));
     return bits.join(' • ');
-}
-
-function routerClientLabel(iface) {
-    return iface.client_name || iface.description || iface.interface_name;
 }
 
 function uniqueValues(values) {
@@ -1787,22 +1820,41 @@ function uniqueValues(values) {
 
 function populateRouterClientOptions() {
     const select = $('router-client-filter');
-    select.replaceChildren(new Option('All Clients / Services', ''));
+    select.replaceChildren(new Option('All Clients', ''));
     if (!routerInventory) { select.disabled = true; return; }
+    uniqueValues(routerInventory.interfaces.map(routerClientLabel)).forEach(v => select.add(new Option(v, v)));
+    select.disabled = select.options.length <= 1;
+}
 
-    uniqueValues(routerInventory.interfaces.map(routerClientLabel)).forEach(client => select.add(new Option(client, client)));
+function populateRouterServiceOptions() {
+    const select = $('router-service-filter');
+    select.replaceChildren(new Option('All Services', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+    uniqueValues(routerInventory.interfaces.map(i => i.service_type)).forEach(v => select.add(new Option(v, v)));
+    select.disabled = select.options.length <= 1;
+}
+
+function populateRouterSiteOptions() {
+    const select = $('router-site-filter');
+    select.replaceChildren(new Option('All Sites', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+    uniqueValues(routerInventory.interfaces.map(i => i.site_name)).forEach(v => select.add(new Option(v, v)));
     select.disabled = select.options.length <= 1;
 }
 
 function filteredRouterInterfaces() {
     if (!routerInventory) return [];
     const client = val('router-client-filter');
+    const service = val('router-service-filter');
+    const site = val('router-site-filter');
     const vrf = val('router-inventory-vrf');
-    return routerInventory.interfaces.filter(iface => {
-        const matchesClient = !client || routerClientLabel(iface) === client;
-        const matchesVrf = !vrf || iface.vrf === vrf;
-        return matchesClient && matchesVrf;
-    });
+
+    return routerInventory.interfaces.filter(iface =>
+        (!client || iface.client_name === client) &&
+        (!service || iface.service_type === service) &&
+        (!site || iface.site_name === site) &&
+        (!vrf || iface.vrf === vrf)
+    );
 }
 
 function populateRouterInventoryVrfOptions() {
@@ -1811,11 +1863,8 @@ function populateRouterInventoryVrfOptions() {
     select.replaceChildren(new Option('All VRFs', ''));
     if (!routerInventory) { select.disabled = true; return; }
 
-    const client = val('router-client-filter');
-    const interfaceVrfs = routerInventory.interfaces
-        .filter(iface => !client || routerClientLabel(iface) === client)
-        .map(iface => iface.vrf);
-    const peerVrfs = routerInventory.peers.map(peer => peer.vrf);
+    const interfaceVrfs = filteredRouterInterfaces().map(i => i.vrf);
+    const peerVrfs = routerInventory.peers.map(p => p.vrf);
     uniqueValues([...routerInventory.vrfs, ...interfaceVrfs, ...peerVrfs]).forEach(vrf => select.add(new Option(vrf, vrf)));
 
     select.disabled = select.options.length <= 1;
@@ -1848,6 +1897,7 @@ function populateRouterPeerOptions() {
         seen.add(peer.peer_ip);
         const label = peer.peer_ip +
             (peer.remote_asn ? ' • AS' + peer.remote_asn : '') +
+            (peer.description ? ' • ' + peer.description : '') +
             (peer.vrf ? ' • ' + peer.vrf : '');
         const option = new Option(label, 'bgp:' + String(peer.id));
         option.dataset.peerIp = peer.peer_ip;
@@ -1859,8 +1909,7 @@ function populateRouterPeerOptions() {
         const peerIp = iface.likely_peer_ip || '';
         if (!peerIp || seen.has(peerIp)) return;
         seen.add(peerIp);
-        const label = peerIp + ' • inferred from ' + iface.interface_name +
-            (iface.vrf ? ' • ' + iface.vrf : '');
+        const label = peerIp + ' • P2P from ' + iface.interface_name + (iface.vrf ? ' • ' + iface.vrf : '');
         const option = new Option(label, 'p2p:' + String(iface.id));
         option.dataset.peerIp = peerIp;
         option.dataset.vrf = iface.vrf || '';
@@ -1875,7 +1924,10 @@ function populateRouterPolicyOptions() {
     const select = $('router-policy-filter');
     select.replaceChildren(new Option('Select Route Policy', ''));
     if (!routerInventory) { select.disabled = true; return; }
-    uniqueValues(routerInventory.route_policies || []).forEach(name => select.add(new Option(name, name)));
+    (routerInventory.route_policy_details || []).forEach(item => {
+        const label = item.name + (Number(item.node_count || 0) ? ' • ' + item.node_count + ' nodes' : '');
+        select.add(new Option(label, item.name));
+    });
     select.disabled = select.options.length <= 1;
 }
 
@@ -1883,7 +1935,10 @@ function populateRouterPrefixOptions() {
     const select = $('router-prefix-filter');
     select.replaceChildren(new Option('Select Prefix List', ''));
     if (!routerInventory) { select.disabled = true; return; }
-    uniqueValues(routerInventory.prefix_lists || []).forEach(name => select.add(new Option(name, name)));
+    (routerInventory.prefix_details || []).forEach(item => {
+        const label = item.name + (Number(item.entry_count || 0) ? ' • ' + item.entry_count + ' entries' : '');
+        select.add(new Option(label, item.name));
+    });
     select.disabled = select.options.length <= 1;
 }
 
@@ -1900,29 +1955,33 @@ function handleRouterPrefixChange() {
 }
 
 function handleRouterClientChange() {
-    $('router-inventory-vrf').value = '';
     $('router-interface-filter').value = '';
     $('router-peer-filter').value = '';
     clearRouterRuntimeValues();
-    handleRouterPolicyChange();
-    handleRouterPrefixChange();
-    populateRouterInventoryVrfOptions();
     populateRouterInterfaceOptions();
     populateRouterPeerOptions();
+    renderRouterCircuitSnapshot(null);
     updateRouterVariableVisibility();
     renderRouterCommands();
+}
+
+function handleRouterServiceChange() {
+    handleRouterClientChange();
+}
+
+function handleRouterSiteChange() {
+    handleRouterClientChange();
 }
 
 function handleRouterInventoryVrfChange() {
     $('router-interface-filter').value = '';
     $('router-peer-filter').value = '';
     clearRouterRuntimeValues();
-    handleRouterPolicyChange();
-    handleRouterPrefixChange();
     const vrf = val('router-inventory-vrf');
     if ($('router-vrf')) $('router-vrf').value = vrf;
     populateRouterInterfaceOptions();
     populateRouterPeerOptions();
+    renderRouterCircuitSnapshot(null);
     updateRouterVariableVisibility();
     renderRouterCommands();
 }
@@ -1930,6 +1989,7 @@ function handleRouterInventoryVrfChange() {
 function handleRouterInterfaceChange() {
     const id = Number(val('router-interface-filter'));
     if (!routerInventory || !id) {
+        renderRouterCircuitSnapshot(null);
         updateRouterVariableVisibility();
         renderRouterCommands();
         return;
@@ -1938,27 +1998,38 @@ function handleRouterInterfaceChange() {
     const iface = routerInventory.interfaces.find(item => Number(item.id) === id);
     if (!iface) return;
 
-    const client = routerClientLabel(iface);
-    if ([...$('router-client-filter').options].some(o => o.value === client)) $('router-client-filter').value = client;
+    if (iface.client_name && [...$('router-client-filter').options].some(o => o.value === iface.client_name)) $('router-client-filter').value = iface.client_name;
+    if (iface.service_type && [...$('router-service-filter').options].some(o => o.value === iface.service_type)) $('router-service-filter').value = iface.service_type;
+    if (iface.site_name && [...$('router-site-filter').options].some(o => o.value === iface.site_name)) $('router-site-filter').value = iface.site_name;
 
     if (iface.vrf && [...$('router-inventory-vrf').options].some(o => o.value === iface.vrf)) {
         $('router-inventory-vrf').value = iface.vrf;
         if ($('router-vrf')) $('router-vrf').value = iface.vrf;
     }
 
+    if ($('router-interface-name')) $('router-interface-name').value = iface.interface_name || '';
     if ($('router-vlan')) $('router-vlan').value = iface.vlan_id || '';
     const trunkMatch = String(iface.interface_name || '').match(/^Eth-Trunk(\d+)/i);
     if ($('router-trunk')) $('router-trunk').value = trunkMatch ? trunkMatch[1] : '';
 
     populateRouterPeerOptions();
-    const peerOptions = [...$('router-peer-filter').options].filter(o => o.value);
-    if (peerOptions.length === 1) {
-        $('router-peer-filter').value = peerOptions[0].value;
+
+    const exactPeerOption = [...$('router-peer-filter').options].find(o => o.dataset.peerIp === iface.likely_peer_ip && iface.likely_peer_ip);
+    if (exactPeerOption) {
+        $('router-peer-filter').value = exactPeerOption.value;
         handleRouterPeerChange();
     } else {
-        updateRouterVariableVisibility();
-        renderRouterCommands();
+        const peerOptions = [...$('router-peer-filter').options].filter(o => o.value);
+        if (peerOptions.length === 1) {
+            $('router-peer-filter').value = peerOptions[0].value;
+            handleRouterPeerChange();
+        } else {
+            updateRouterVariableVisibility();
+            renderRouterCommands();
+        }
     }
+
+    renderRouterCircuitSnapshot(iface);
 }
 
 function handleRouterPeerChange() {
@@ -1968,6 +2039,7 @@ function handleRouterPeerChange() {
         if ($('router-ip')) $('router-ip').value = '';
         updateRouterVariableVisibility();
         renderRouterCommands();
+        renderRouterCircuitSnapshot(getSelectedRouterInterface());
         return;
     }
 
@@ -1983,32 +2055,130 @@ function handleRouterPeerChange() {
         const id = Number(raw.split(':')[1]);
         const peer = routerInventory.peers.find(item => Number(item.id) === id);
         if (peer) {
-            if (peer.import_policy) {
-                if ($('router-policy')) $('router-policy').value = peer.import_policy;
-                if ([...$('router-policy-filter').options].some(o => o.value === peer.import_policy)) $('router-policy-filter').value = peer.import_policy;
-            } else if (peer.export_policy) {
-                if ($('router-policy')) $('router-policy').value = peer.export_policy;
-                if ([...$('router-policy-filter').options].some(o => o.value === peer.export_policy)) $('router-policy-filter').value = peer.export_policy;
+            const policy = peer.import_policy || peer.export_policy || '';
+            const prefix = peer.import_prefix || peer.export_prefix || '';
+            if (policy) {
+                if ($('router-policy')) $('router-policy').value = policy;
+                if ([...$('router-policy-filter').options].some(o => o.value === policy)) $('router-policy-filter').value = policy;
             }
-
-            if (peer.import_prefix) {
-                if ($('router-prefix')) $('router-prefix').value = peer.import_prefix;
-                if ([...$('router-prefix-filter').options].some(o => o.value === peer.import_prefix)) $('router-prefix-filter').value = peer.import_prefix;
-            } else if (peer.export_prefix) {
-                if ($('router-prefix')) $('router-prefix').value = peer.export_prefix;
-                if ([...$('router-prefix-filter').options].some(o => o.value === peer.export_prefix)) $('router-prefix-filter').value = peer.export_prefix;
+            if (prefix) {
+                if ($('router-prefix')) $('router-prefix').value = prefix;
+                if ([...$('router-prefix-filter').options].some(o => o.value === prefix)) $('router-prefix-filter').value = prefix;
             }
         }
     }
 
     updateRouterVariableVisibility();
     renderRouterCommands();
+    renderRouterCircuitSnapshot(getSelectedRouterInterface());
+}
+
+function getSelectedRouterInterface() {
+    const id = Number(val('router-interface-filter'));
+    if (!routerInventory || !id) return null;
+    return routerInventory.interfaces.find(item => Number(item.id) === id) || null;
+}
+
+function formatRouterKbps(value) {
+    const n = Number(value || 0);
+    return n ? n.toLocaleString() + ' kbps' : '—';
+}
+
+function routerFact(label, value, hint = '') {
+    return `<div class="router-fact-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong>${hint ? '<small>' + escapeHtml(hint) + '</small>' : ''}</div>`;
+}
+
+function renderRouterPeakSummary() {
+    const panel = $('router-peak-panel');
+    if (!panel) return;
+
+    if (!routerInventory) {
+        panel.hidden = true;
+        return;
+    }
+
+    panel.hidden = false;
+    const device = routerInventory.device || {};
+    const facts = routerInventory.facts || {};
+    $('router-peak-source').textContent = device.source_name || 'Imported configuration';
+
+    $('router-device-facts').innerHTML = [
+        routerFact('Router', device.hostname, [device.site_code, device.role].filter(Boolean).join(' • ')),
+        routerFact('Platform', device.platform, device.software_version || ''),
+        routerFact('Router ID', device.router_id, device.bgp_asn ? 'BGP AS ' + device.bgp_asn : ''),
+        routerFact('Clients', String(Number(facts.clients || 0)), 'Normalized customer/service groups'),
+        routerFact('Interfaces', String(Number(facts.interfaces || 0)), Number(facts.vrfs || 0) + ' VRFs'),
+        routerFact('Routing', Number(facts.bgp_peers || 0) + ' BGP peers', Number(facts.ospf_processes || 0) + ' OSPF • ' + Number(facts.isis_processes || 0) + ' IS-IS'),
+        routerFact('Policies', Number(facts.route_policies || 0) + ' route policies', Number(facts.prefix_lists || 0) + ' prefix lists'),
+        routerFact('QoS / Static', Number(facts.qos_profiles || 0) + ' QoS profiles', Number(facts.static_routes || 0) + ' static routes')
+    ].join('');
+
+    const routingBits = [];
+    if (device.bgp_asn) routingBits.push('BGP AS ' + device.bgp_asn + (device.router_id ? ' / RID ' + device.router_id : ''));
+    if (routerInventory.ospf_processes.length) routingBits.push(routerInventory.ospf_processes.length + ' OSPF/OSPFv3 processes');
+    if (routerInventory.isis_processes.length) routingBits.push(routerInventory.isis_processes.length + ' IS-IS process(es)');
+    if (routerInventory.qos_profiles.length) routingBits.push(routerInventory.qos_profiles.length + ' QoS profiles');
+    $('router-routing-summary').innerHTML = routingBits.length
+        ? '<strong>Core context:</strong> ' + routingBits.map(escapeHtml).join(' • ')
+        : '';
+
+    renderRouterCircuitSnapshot(null);
+}
+
+function circuitItem(label, value) {
+    return `<div class="router-circuit-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`;
+}
+
+function renderRouterCircuitSnapshot(iface) {
+    const box = $('router-circuit-snapshot');
+    const grid = $('router-circuit-grid');
+    if (!box || !grid) return;
+
+    if (!iface) {
+        box.hidden = true;
+        grid.innerHTML = '';
+        return;
+    }
+
+    const selectedPeer = $('router-peer-filter')?.selectedOptions?.[0]?.dataset?.peerIp || iface.likely_peer_ip || '';
+    const prefix = iface.primary_ip
+        ? iface.primary_ip + (iface.prefix_length ? '/' + iface.prefix_length : '')
+        : '—';
+    const qosIn = iface.qos_in_profile
+        ? iface.qos_in_profile + (iface.qos_in_cir_kbps ? ' (' + formatRouterKbps(iface.qos_in_cir_kbps) + ')' : '')
+        : '—';
+    const qosOut = iface.qos_out_profile
+        ? iface.qos_out_profile + (iface.qos_out_cir_kbps ? ' (' + formatRouterKbps(iface.qos_out_cir_kbps) + ')' : '')
+        : '—';
+
+    grid.innerHTML = [
+        circuitItem('Client', iface.client_name),
+        circuitItem('Service', iface.service_type),
+        circuitItem('Site / Branch', iface.site_name),
+        circuitItem('Link ID', iface.link_id),
+        circuitItem('Interface', iface.interface_name),
+        circuitItem('VLAN', iface.vlan_id),
+        circuitItem('VRF', iface.vrf),
+        circuitItem('PE / Local IP', prefix),
+        circuitItem('Likely / BGP Peer', selectedPeer),
+        circuitItem('Description BW', iface.bandwidth_label),
+        circuitItem('QoS In', qosIn),
+        circuitItem('QoS Out', qosOut),
+        circuitItem('MTU', iface.mtu ? String(iface.mtu) : '—'),
+        circuitItem('OSPF', iface.ospf_cost ? 'Cost ' + iface.ospf_cost + (iface.ospf_network_type ? ' • ' + iface.ospf_network_type : '') : '—'),
+        circuitItem('IS-IS', iface.isis_process ? 'Process ' + iface.isis_process : '—'),
+        circuitItem('Raw Description', iface.description)
+    ].join('');
+
+    box.hidden = false;
 }
 
 function resetRouterInventorySelectors(resetDevice = true) {
     if (resetDevice && $('router-device-filter')) $('router-device-filter').value = '';
     for (const [id, label] of [
-        ['router-client-filter','All Clients / Services'],
+        ['router-client-filter','All Clients'],
+        ['router-service-filter','All Services'],
+        ['router-site-filter','All Sites'],
         ['router-inventory-vrf','All VRFs'],
         ['router-interface-filter','Select Interface'],
         ['router-peer-filter','Select Peer IP'],
@@ -2049,7 +2219,6 @@ function handleRouterPlatformChange(preserveRuntime = false) {
         const label = item.count > 1 ? `${item.name} (${item.count})` : item.name;
         categorySelect.add(new Option(label, item.name));
     });
-    if (!routerInventory) setRouterHint('Select the troubleshooting task for ' + platform + '.');
 }
 
 function handleRouterCategoryChange() {
@@ -2110,7 +2279,7 @@ async function loadRelevantRouterCommands() {
     updateRouterVariableVisibility();
     renderRouterCommands();
     $('router-flow-note').hidden = false;
-    setRouterHint(routerCommands.length ? 'Select a command. Stored router values are auto-filled; only missing runtime values remain editable.' : 'No command is stored for this selection.');
+    setRouterHint(routerCommands.length ? 'Stored router values are auto-filled. Only missing runtime values stay editable.' : 'No command is stored for this selection.');
 }
 
 function getVisibleRouterCommands() {
@@ -2122,13 +2291,11 @@ function getVisibleRouterCommands() {
 function updateRouterVariableVisibility() {
     const required = new Set();
     getVisibleRouterCommands().forEach(command => {
-        for (const match of String(command.template || '').matchAll(/\{([a-z0-9_]+)\}/gi)) {
-            required.add(match[1]);
-        }
+        for (const match of String(command.template || '').matchAll(/\{([a-z0-9_]+)\}/gi)) required.add(match[1]);
     });
 
     const values = routerCommandValues();
-    const inventoryAutofill = new Set(['vlan','trunk','ip','vrf','peer_ip','policy','prefix']);
+    const inventoryAutofill = new Set(['vlan','trunk','interface','ip','vrf','peer_ip','policy','prefix']);
 
     document.querySelectorAll('[data-router-var]').forEach(group => {
         const key = group.dataset.routerVar;
@@ -2143,7 +2310,7 @@ function setRouterHint(message) {
 }
 
 function clearRouterRuntimeValues() {
-    ['router-vlan','router-trunk','router-ip','router-vrf','router-peer-ip','router-config-search','router-policy','router-prefix']
+    ['router-vlan','router-trunk','router-interface-name','router-ip','router-vrf','router-peer-ip','router-config-search','router-policy','router-prefix']
         .forEach(id => { if ($(id)) $(id).value = ''; });
 }
 
@@ -2211,6 +2378,8 @@ function resetRouterCommandInputs(resetSelectors = true) {
     if (resetSelectors) {
         resetRouterInventorySelectors(true);
         routerInventory = null;
+        renderRouterPeakSummary();
+
         if ($('router-platform-filter')) $('router-platform-filter').value = '';
         if ($('router-category-filter')) {
             $('router-category-filter').replaceChildren(new Option('Select Task', ''));
@@ -2224,9 +2393,10 @@ function resetRouterCommandInputs(resetSelectors = true) {
             $('router-command-filter').value = '';
             $('router-command-filter').disabled = true;
         }
+
         routerCommands = [];
         $('router-flow-note').hidden = true;
-        setRouterHint('You can select a stored router to auto-fill client/VRF/interface/IP data, or use the command selector manually.');
+        setRouterHint('Select a stored router to load its clients, VRFs, interfaces and IP context.');
     }
 
     updateRouterVariableVisibility();
