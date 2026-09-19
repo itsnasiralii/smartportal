@@ -1810,3 +1810,9 @@ function resetRouterCommandInputs(resetSelectors = true) {
         renderRouterCommands();
     }
 }
+
+
+// router-auto-load
+document.addEventListener('DOMContentLoaded', () => {
+    if ($('tab-router')?.classList.contains('active')) loadRouterCommandMeta();
+});
