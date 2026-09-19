@@ -79,11 +79,11 @@ function router_parse_service_metadata(string $description, string $vrf): array 
         $service = strtoupper($m[1]);
         $payload = trim($m[2]);
 
-        if (preg_match('/\b((?:LNK|DIA|DPLC|IPLC)[A-Z0-9-]*\d[A-Z0-9-]*)\b/i', $payload, $lm)) {
+        if (preg_match('/((?:LNK|DIA|DPLC|IPLC)[A-Z0-9-]*\d[A-Z0-9-]*)/i', $payload, $lm)) {
             $linkId = $lm[1];
             $payload = str_ireplace($lm[0], '', $payload);
         }
-        if (preg_match('/\b(\d+(?:\.\d+)?)\s*(Kbps|Mbps|Gbps)\b/i', $payload, $bm)) {
+        if (preg_match('/(\d+(?:\.\d+)?)\s*(Kbps|Mbps|Gbps)/i', $payload, $bm)) {
             $bandwidth = $bm[1] . $bm[2];
             $payload = str_ireplace($bm[0], '', $payload);
         }
@@ -112,8 +112,8 @@ function router_parse_service_metadata(string $description, string $vrf): array 
         }
     } else {
         if (preg_match('/\b(MPLS|DIA|DPLC|IPLC|TURBONET)\b/i', $d, $m)) $service = strtoupper($m[1]);
-        if (preg_match('/\b((?:LNK|DIA|DPLC|IPLC)[A-Z0-9-]*\d[A-Z0-9-]*)\b/i', $d, $m)) $linkId = $m[1];
-        if (preg_match('/\b(\d+(?:\.\d+)?)\s*(Kbps|Mbps|Gbps)\b/i', $d, $m)) $bandwidth = $m[1] . $m[2];
+        if (preg_match('/((?:LNK|DIA|DPLC|IPLC)[A-Z0-9-]*\d[A-Z0-9-]*)/i', $d, $m)) $linkId = $m[1];
+        if (preg_match('/(\d+(?:\.\d+)?)\s*(Kbps|Mbps|Gbps)/i', $d, $m)) $bandwidth = $m[1] . $m[2];
     }
 
     if ($client === '' && $d !== '') {
