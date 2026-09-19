@@ -298,7 +298,7 @@ function router_parse_config(string $config, string $sourceName = ''): array {
             continue;
         }
 
-        if (preg_match('/^qos-profile\s+(\S+)/i', $trim, $m)) {
+        if ($currentInterface === null && preg_match('/^qos-profile\s+(\S+)/i', $trim, $m)) {
             $currentQos = $m[1];
             $qosProfiles[$currentQos] = $qosProfiles[$currentQos] ?? [
                 'name' => $currentQos, 'cir_kbps' => null, 'pir_kbps' => null, 'applied_count' => 0
