@@ -614,41 +614,51 @@ let vpbxDataCache = { outgoing: [], incoming: [] };
 
 function switchVpbxSection(section) {
     const isOut = section === 'outgoing';
-    const outSec = $('vpbx-section-outgoing');
-    const incSec = $('vpbx-section-incoming');
-    const outBtn = $('vpbx-btn-sec-outgoing');
-    const incBtn = $('vpbx-btn-sec-incoming');
+
+    // Current VPBX markup IDs (with fallback to older IDs for compatibility)
+    const outSec = $('vpbx-sec-outgoing') || $('vpbx-section-outgoing');
+    const incSec = $('vpbx-sec-incoming') || $('vpbx-section-incoming');
+    const outBtn = $('vpbx-nav-out') || $('vpbx-btn-sec-outgoing');
+    const incBtn = $('vpbx-nav-inc') || $('vpbx-btn-sec-incoming');
 
     if (outSec) outSec.style.display = isOut ? 'block' : 'none';
-    if (incSec) incSec.style.display = !isOut ? 'block' : 'none';
+    if (incSec) incSec.style.display = isOut ? 'none' : 'block';
 
     if (outBtn) {
-        outBtn.style.background = isOut ? '#3b82f6' : '#e2e8f0';
-        outBtn.style.color = isOut ? '#ffffff' : '#334155';
+        outBtn.classList.toggle('active', isOut);
+        outBtn.style.borderBottom = isOut ? '2px solid #059669' : '2px solid transparent';
+        outBtn.style.color = isOut ? '#059669' : '#475569';
     }
     if (incBtn) {
-        incBtn.style.background = !isOut ? '#3b82f6' : '#e2e8f0';
-        incBtn.style.color = !isOut ? '#ffffff' : '#334155';
+        incBtn.classList.toggle('active', !isOut);
+        incBtn.style.borderBottom = !isOut ? '2px solid #059669' : '2px solid transparent';
+        incBtn.style.color = !isOut ? '#059669' : '#475569';
     }
+
+    // Keep the selected section fresh and visible after switching.
+    if (!isOut) renderVpbxIncomingTable();
+    else renderVpbxOutgoingTable();
 }
 
 function switchVpbxOutSubtab(tab) {
     const isAdd = tab === 'add';
     const paneAdd = $('vpbx-out-pane-add');
     const paneEdit = $('vpbx-out-pane-edit');
-    const tabAdd = $('vpbx-out-tab-add');
-    const tabEdit = $('vpbx-out-tab-edit');
+    const tabAdd = $('vpbx-out-subtab-add') || $('vpbx-out-tab-add');
+    const tabEdit = $('vpbx-out-subtab-edit') || $('vpbx-out-tab-edit');
 
     if (paneAdd) paneAdd.style.display = isAdd ? 'block' : 'none';
-    if (paneEdit) paneEdit.style.display = !isAdd ? 'block' : 'none';
+    if (paneEdit) paneEdit.style.display = isAdd ? 'none' : 'block';
 
     if (tabAdd) {
-        tabAdd.style.borderBottom = isAdd ? '2px solid #2563eb' : 'none';
-        tabAdd.style.color = isAdd ? '#2563eb' : '#64748b';
+        tabAdd.className = isAdd ? 'btn-primary' : 'btn-secondary';
+        tabAdd.style.padding = '6px 14px';
+        tabAdd.style.fontSize = '0.85rem';
     }
     if (tabEdit) {
-        tabEdit.style.borderBottom = !isAdd ? '2px solid #2563eb' : 'none';
-        tabEdit.style.color = !isAdd ? '#2563eb' : '#64748b';
+        tabEdit.className = !isAdd ? 'btn-primary' : 'btn-secondary';
+        tabEdit.style.padding = '6px 14px';
+        tabEdit.style.fontSize = '0.85rem';
     }
 }
 
@@ -656,19 +666,21 @@ function switchVpbxIncSubtab(tab) {
     const isAdd = tab === 'add';
     const paneAdd = $('vpbx-inc-pane-add');
     const paneEdit = $('vpbx-inc-pane-edit');
-    const tabAdd = $('vpbx-inc-tab-add');
-    const tabEdit = $('vpbx-inc-tab-edit');
+    const tabAdd = $('vpbx-inc-subtab-add') || $('vpbx-inc-tab-add');
+    const tabEdit = $('vpbx-inc-subtab-edit') || $('vpbx-inc-tab-edit');
 
     if (paneAdd) paneAdd.style.display = isAdd ? 'block' : 'none';
-    if (paneEdit) paneEdit.style.display = !isAdd ? 'block' : 'none';
+    if (paneEdit) paneEdit.style.display = isAdd ? 'none' : 'block';
 
     if (tabAdd) {
-        tabAdd.style.borderBottom = isAdd ? '2px solid #2563eb' : 'none';
-        tabAdd.style.color = isAdd ? '#2563eb' : '#64748b';
+        tabAdd.className = isAdd ? 'btn-primary' : 'btn-secondary';
+        tabAdd.style.padding = '6px 14px';
+        tabAdd.style.fontSize = '0.85rem';
     }
     if (tabEdit) {
-        tabEdit.style.borderBottom = !isAdd ? '2px solid #2563eb' : 'none';
-        tabEdit.style.color = !isAdd ? '#2563eb' : '#64748b';
+        tabEdit.className = !isAdd ? 'btn-primary' : 'btn-secondary';
+        tabEdit.style.padding = '6px 14px';
+        tabEdit.style.fontSize = '0.85rem';
     }
 }
 
