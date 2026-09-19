@@ -189,6 +189,55 @@ if ($authenticated && isset($_POST['del_vpbx_ivr'])) {
 }
 
 $active_admin_tab = 'tab-admin-complaints';
+
+// CRUD: ROUTER COMMAND LIBRARY
+if ($authenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_router_command') {
+    $active_admin_tab = 'tab-admin-router';
+    $title = trim($_POST['router_title'] ?? '');
+    $platform = trim($_POST['router_platform'] ?? '');
+    $category = trim($_POST['router_category'] ?? '');
+    $template = trim($_POST['router_template'] ?? '');
+    $description = trim($_POST['router_description'] ?? '');
+    $sort_order = intval($_POST['router_sort_order'] ?? 100);
+
+    if ($title !== '' && $platform !== '' && $category !== '' && $template !== '') {
+        $stmt = $pdo->prepare("INSERT INTO router_commands (title, platform, category, command_template, description, is_active, sort_order) VALUES (?, ?, ?, ?, ?, 1, ?)");
+        $stmt->execute([$title, $platform, $category, $template, $description, $sort_order]);
+        $status_msg = "Router command added to the database.";
+    } else {
+        $status_msg = "Title, platform, category and command template are required.";
+    }
+}
+
+if ($authenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_router_command') {
+    $active_admin_tab = 'tab-admin-router';
+    $id = intval($_POST['router_id'] ?? 0);
+    $title = trim($_POST['router_title'] ?? '');
+    $platform = trim($_POST['router_platform'] ?? '');
+    $category = trim($_POST['router_category'] ?? '');
+    $template = trim($_POST['router_template'] ?? '');
+    $description = trim($_POST['router_description'] ?? '');
+    $sort_order = intval($_POST['router_sort_order'] ?? 100);
+    $is_active = isset($_POST['router_is_active']) ? 1 : 0;
+
+    if ($id > 0 && $title !== '' && $platform !== '' && $category !== '' && $template !== '') {
+        $stmt = $pdo->prepare("UPDATE router_commands SET title = ?, platform = ?, category = ?, command_template = ?, description = ?, is_active = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+        $stmt->execute([$title, $platform, $category, $template, $description, $is_active, $sort_order, $id]);
+        $status_msg = "Router command updated.";
+    } else {
+        $status_msg = "Unable to update router command. Check required fields.";
+    }
+}
+
+if ($authenticated && isset($_POST['del_router_command'])) {
+    $active_admin_tab = 'tab-admin-router';
+    $id = intval($_POST['del_router_command']);
+    if ($id > 0) {
+        $pdo->prepare("DELETE FROM router_commands WHERE id = ?")->execute([$id]);
+        $status_msg = "Router command deleted.";
+    }
+}
+
 // CRUD: RE-SYNC NMS EXCEL
 if ($authenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'resync_nms_excel') {
     $active_admin_tab = 'tab-admin-nms';
@@ -210,6 +259,7 @@ $all_users = $authenticated ? $pdo->query("SELECT id, username, role, permission
 $vpbx_ivrs = $authenticated ? $pdo->query("SELECT * FROM vpbx_ivrs ORDER BY is_default DESC, id ASC")->fetchAll() : [];
 $nms_total_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_clients")->fetchColumn() : 0;
 $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_clients WHERE is_zte = 1")->fetchColumn() : 0;
+$router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_commands ORDER BY platform COLLATE NOCASE, category COLLATE NOCASE, sort_order ASC, title COLLATE NOCASE")->fetchAll() : [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -243,6 +293,7 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
             <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-users' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-users')">👤 User Authentication (CRUD)</button>
             <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-vpbx' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-vpbx')">📞 VPBX IVRs (CRUD)</button>
             <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-nms' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-nms')">🏷️ NMS Customer DB</button>
+            <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-router' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-router')">🛠️ Router Commands</button>
         </nav>
         <?php endif; ?>
     </header>
@@ -276,7 +327,7 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
             <?php endif; ?>
 
             <!-- ADMIN TAB 1: COMPLAINTS CRUD -->
-            <div id="tab-admin-complaints" class="tab-content active">
+            <div id="tab-admin-complaints" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-complaints' ? 'active' : '' ?>">
                 <div class="panel-card">
                     <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
                         <div>
@@ -330,7 +381,7 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
             </div>
 
             <!-- ADMIN TAB 2: VENDORS MATRIX CRUD -->
-            <div id="tab-admin-vendors" class="tab-content">
+            <div id="tab-admin-vendors" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-vendors' ? 'active' : '' ?>">
                 <div class="panel-card">
                     <div class="panel-header">
                         <h2>🏪 Vendor Escalation Matrix Management</h2>
@@ -488,7 +539,7 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
             </div>
 
             <!-- ADMIN TAB 3: USER AUTHENTICATION CRUD -->
-            <div id="tab-admin-users" class="tab-content">
+            <div id="tab-admin-users" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-users' ? 'active' : '' ?>">
                 <div class="panel-card">
                     <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                         <div>
@@ -648,7 +699,7 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
                         <input type="hidden" name="user_id" id="modal-perm-user-id">
 
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                            <span style="font-size:0.85rem; font-weight:600; color:#334155;">Available Features (11)</span>
+                            <span style="font-size:0.85rem; font-weight:600; color:#334155;">Available Features (<?= count($NOC_FEATURES) ?>)</span>
                             <div style="display:flex; gap:6px;">
                                 <button type="button" class="btn-secondary" style="padding:2px 8px; font-size:0.75rem;" onclick="toggleAllPermCheckboxes('modal-perm-grid', true)">Select All</button>
                                 <button type="button" class="btn-secondary" style="padding:2px 8px; font-size:0.75rem;" onclick="toggleAllPermCheckboxes('modal-perm-grid', false)">Deselect All</button>
@@ -673,7 +724,7 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
             </div>
 
             <!-- ADMIN TAB 4: VPBX IVR MANAGEMENT CRUD -->
-            <div id="tab-admin-vpbx" class="tab-content">
+            <div id="tab-admin-vpbx" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-vpbx' ? 'active' : '' ?>">
                 <div class="panel-card">
                     <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div>
@@ -737,8 +788,119 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
                 </div>
             </div>
 
+            <!-- ADMIN TAB: ROUTER COMMANDS -->
+            <div id="tab-admin-router" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-router' ? 'active' : '' ?>">
+                <div class="panel-card" style="margin-bottom:20px;">
+                    <div class="panel-header">
+                        <h2>🛠️ Router Command Database</h2>
+                        <p>Add, edit, enable/disable or remove commands. The user console only shows commands after a router platform and troubleshooting task are selected.</p>
+                    </div>
+                    <div class="panel-body">
+                        <form method="POST" action="admin.php">
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf']) ?>">
+                            <input type="hidden" name="action" value="add_router_command">
+                            <div class="form-row">
+                                <div class="form-group col-half">
+                                    <label>Command Title *</label>
+                                    <input type="text" name="router_title" required placeholder="e.g. ARP on Vlanif">
+                                </div>
+                                <div class="form-group col-half">
+                                    <label>Router / Platform *</label>
+                                    <input type="text" name="router_platform" required placeholder="e.g. S9306">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group col-half">
+                                    <label>Troubleshooting Category *</label>
+                                    <input type="text" name="router_category" required placeholder="e.g. ARP">
+                                </div>
+                                <div class="form-group col-half">
+                                    <label>Sort Order</label>
+                                    <input type="number" name="router_sort_order" value="100">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Command Template *</label>
+                                <input type="text" name="router_template" required placeholder="display arp interface Vlanif {vlan}">
+                                <small>Supported variables: {vlan}, {trunk}, {ip}, {vrf}, {peer_ip}, {search}, {policy}, {prefix}</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea name="router_description" rows="2" placeholder="What this command checks and when to use it"></textarea>
+                            </div>
+                            <button type="submit" class="btn-primary">➕ Add Command to Database</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="panel-card">
+                    <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2>Configured Router Commands</h2>
+                            <p><?= count($router_commands_admin ?? []) ?> database records</p>
+                        </div>
+                        <a href="index.php" class="btn-primary">Open Router Commands</a>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Platform</th>
+                                        <th>Category</th>
+                                        <th>Title</th>
+                                        <th>Command</th>
+                                        <th>Status</th>
+                                        <th>Order</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach (($router_commands_admin ?? []) as $rc): ?>
+                                    <tr>
+                                        <td>#<?= (int)$rc['id'] ?></td>
+                                        <td><strong><?= htmlspecialchars($rc['platform']) ?></strong></td>
+                                        <td><?= htmlspecialchars($rc['category']) ?></td>
+                                        <td><?= htmlspecialchars($rc['title']) ?></td>
+                                        <td><code style="white-space:normal; word-break:break-word;"><?= htmlspecialchars($rc['command_template']) ?></code></td>
+                                        <td>
+                                            <span class="status-pill <?= !empty($rc['is_active']) ? 'status-green' : 'status-closed' ?>">
+                                                <?= !empty($rc['is_active']) ? 'Active' : 'Hidden' ?>
+                                            </span>
+                                        </td>
+                                        <td><?= (int)$rc['sort_order'] ?></td>
+                                        <td style="white-space:nowrap;">
+                                            <button type="button" class="btn-secondary" style="padding:5px 9px;" onclick='openEditRouterCommandModal(<?= json_encode([
+                                                "id" => (int)$rc["id"],
+                                                "title" => (string)$rc["title"],
+                                                "platform" => (string)$rc["platform"],
+                                                "category" => (string)$rc["category"],
+                                                "template" => (string)$rc["command_template"],
+                                                "description" => (string)($rc["description"] ?? ""),
+                                                "is_active" => (int)$rc["is_active"],
+                                                "sort_order" => (int)$rc["sort_order"]
+                                            ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Edit</button>
+                                            <form method="POST" action="admin.php" style="display:inline;" onsubmit="return confirm('Delete this router command?')">
+                                                <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf']) ?>">
+                                                <input type="hidden" name="del_router_command" value="<?= (int)$rc['id'] ?>">
+                                                <button type="submit" class="btn-danger">Delete</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                <?php if (empty($router_commands_admin)): ?>
+                                    <tr><td colspan="8" style="text-align:center; padding:25px; color:#64748b;">No router commands configured.</td></tr>
+                                <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ADMIN TAB: NMS CUSTOMER DB -->
-            <div id="tab-admin-nms" class="tab-content">
+            <div id="tab-admin-nms" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-nms' ? 'active' : '' ?>">
                 <div class="panel-card" style="margin-bottom:20px; border-left:5px solid #2563eb;">
                     <div class="panel-body" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
                         <div>
@@ -816,6 +978,36 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
                             </table>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- MODAL: EDIT ROUTER COMMAND -->
+            <div id="editRouterCommandModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;">
+                <div style="background:#fff; width:95%; max-width:720px; border-radius:12px; padding:24px; max-height:90vh; overflow:auto;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h3 style="margin:0;">✏️ Edit Router Command</h3>
+                        <button type="button" onclick="closeEditRouterCommandModal()" style="border:none;background:transparent;font-size:1.4rem;cursor:pointer;">&times;</button>
+                    </div>
+                    <form method="POST" action="admin.php">
+                        <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf']) ?>">
+                        <input type="hidden" name="action" value="update_router_command">
+                        <input type="hidden" name="router_id" id="edit-router-id">
+                        <div class="form-row">
+                            <div class="form-group col-half"><label>Title *</label><input id="edit-router-title" name="router_title" required></div>
+                            <div class="form-group col-half"><label>Platform *</label><input id="edit-router-platform" name="router_platform" required></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-half"><label>Category *</label><input id="edit-router-category" name="router_category" required></div>
+                            <div class="form-group col-half"><label>Sort Order</label><input id="edit-router-sort" name="router_sort_order" type="number"></div>
+                        </div>
+                        <div class="form-group"><label>Command Template *</label><input id="edit-router-template" name="router_template" required></div>
+                        <div class="form-group"><label>Description</label><textarea id="edit-router-description" name="router_description" rows="3"></textarea></div>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:18px;"><input id="edit-router-active" name="router_is_active" type="checkbox" value="1"> Active / visible to users</label>
+                        <div style="display:flex; justify-content:flex-end; gap:10px;">
+                            <button type="button" class="btn-secondary" onclick="closeEditRouterCommandModal()">Cancel</button>
+                            <button type="submit" class="btn-primary">💾 Save Command</button>
+                        </div>
+                    </form>
                 </div>
             </div>
 
@@ -936,6 +1128,22 @@ $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_cli
 
     function closeEditPermissionsModal() {
         document.getElementById('editPermissionsModal').style.display = 'none';
+    }
+
+    function openEditRouterCommandModal(command) {
+        document.getElementById('edit-router-id').value = command.id;
+        document.getElementById('edit-router-title').value = command.title || '';
+        document.getElementById('edit-router-platform').value = command.platform || '';
+        document.getElementById('edit-router-category').value = command.category || '';
+        document.getElementById('edit-router-template').value = command.template || '';
+        document.getElementById('edit-router-description').value = command.description || '';
+        document.getElementById('edit-router-sort').value = command.sort_order ?? 100;
+        document.getElementById('edit-router-active').checked = Number(command.is_active) === 1;
+        document.getElementById('editRouterCommandModal').style.display = 'flex';
+    }
+
+    function closeEditRouterCommandModal() {
+        document.getElementById('editRouterCommandModal').style.display = 'none';
     }
 
     // Auto select first vendor in dropdown on load if present
