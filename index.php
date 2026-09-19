@@ -20,6 +20,7 @@ $feature_tab_map = [
     'roster' => 'tab-roster',
     'vpbx' => 'tab-vpbx',
     'nms' => 'tab-nms',
+    'router' => 'tab-router',
 ];
 $active_tab_id = '';
 foreach ($feature_tab_map as $fkey => $tId) {
@@ -93,6 +94,9 @@ foreach ($feature_tab_map as $fkey => $tId) {
             <?php endif; ?>
             <?php if (has_feature_access('nms')): ?>
                 <button type="button" class="tab-btn <?= $active_tab_id === 'tab-nms' ? 'active' : '' ?>" onclick="switchTab('tab-nms')">🏷️ NMS Customer Search</button>
+            <?php endif; ?>
+            <?php if (has_feature_access('router')): ?>
+                <button type="button" class="tab-btn <?= $active_tab_id === 'tab-router' ? 'active' : '' ?>" onclick="switchTab('tab-router')">🛠️ Router Commands</button>
             <?php endif; ?>
         </nav>
     </header>
