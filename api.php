@@ -33,6 +33,8 @@ $action_permissions = [
     'download_eml' => ['opening', 'customer', 'escalation', 'closure', 'stats', 'progress'],
     'get_vendor_matrix' => ['matrix', 'escalation'],
     'calculate_roster' => ['roster'],
+    'get_router_meta' => ['router'],
+    'get_router_commands' => ['router'],
     'get_vpbx_data' => ['vpbx'],
     'add_vpbx_outgoing' => ['vpbx'],
     'update_vpbx_outgoing' => ['vpbx'],
@@ -714,6 +716,80 @@ if ($action === 'clear_vpbx_data') {
     $pdo->exec("DELETE FROM vpbx_outgoing");
     $pdo->exec("DELETE FROM vpbx_incoming");
     echo json_encode(['success' => true, 'message' => 'All runtime session cases were cleared.', 'outgoing' => [], 'incoming' => []]);
+    exit;
+}
+
+// -----------------------------------------------------------------------------
+// ROUTER COMMAND LIBRARY ENDPOINTS
+// -----------------------------------------------------------------------------
+if ($action === 'get_router_meta') {
+    $rows = $pdo->query("SELECT platform, category, COUNT(*) AS command_count
+                         FROM router_commands
+                         WHERE is_active = 1
+                         GROUP BY platform, category
+                         ORDER BY platform COLLATE NOCASE, category COLLATE NOCASE")->fetchAll(PDO::FETCH_ASSOC);
+
+    $platforms = [];
+    $categories = [];
+    foreach ($rows as $row) {
+        $platform = (string)$row['platform'];
+        $category = (string)$row['category'];
+        if (!in_array($platform, $platforms, true)) {
+            $platforms[] = $platform;
+        }
+        if (!isset($categories[$platform])) {
+            $categories[$platform] = [];
+        }
+        $categories[$platform][] = [
+            'name' => $category,
+            'count' => (int)$row['command_count']
+        ];
+    }
+
+    echo json_encode([
+        'success' => true,
+        'platforms' => $platforms,
+        'categories' => $categories
+    ]);
+    exit;
+}
+
+if ($action === 'get_router_commands') {
+    $platform = trim($_GET['platform'] ?? '');
+    $category = trim($_GET['category'] ?? '');
+    $search = trim($_GET['q'] ?? '');
+
+    // Do not dump the entire command library. A platform + category must be selected.
+    if ($platform === '' || $category === '') {
+        echo json_encode([
+            'success' => true,
+            'commands' => [],
+            'message' => 'Select a router platform and troubleshooting category.'
+        ]);
+        exit;
+    }
+
+    $sql = "SELECT id, title, platform, category, command_template AS template, description, sort_order
+            FROM router_commands
+            WHERE is_active = 1 AND platform = ? COLLATE NOCASE AND category = ? COLLATE NOCASE";
+    $bind = [$platform, $category];
+
+    if ($search !== '') {
+        $sql .= " AND (title LIKE ? OR description LIKE ? OR command_template LIKE ?)";
+        $like = '%' . $search . '%';
+        $bind[] = $like;
+        $bind[] = $like;
+        $bind[] = $like;
+    }
+
+    $sql .= " ORDER BY sort_order ASC, title COLLATE NOCASE ASC LIMIT 50";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($bind);
+
+    echo json_encode([
+        'success' => true,
+        'commands' => $stmt->fetchAll(PDO::FETCH_ASSOC)
+    ]);
     exit;
 }
 
