@@ -83,6 +83,7 @@ function router_parse_config(string $config, string $sourceName = ''): array {
 
         if ($trim === '#') {
             $currentInterface = null;
+            $currentBgpVrf = '';
             continue;
         }
 
