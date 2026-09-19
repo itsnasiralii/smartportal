@@ -339,7 +339,8 @@ if ($use_sqlite) {
             'matrix' => '🏪 Vendor Matrix',
             'roster' => '📅 Duty Roster',
             'vpbx' => '📞 VPBX / Regulatory',
-            'nms' => '🏷️ NMS Customer Search'
+            'nms' => '🏷️ NMS Customer Search',
+            'router' => '🛠️ Router Commands'
         ];
 
         // Seed default vendors if empty
