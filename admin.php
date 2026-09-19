@@ -699,7 +699,7 @@ $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_comm
                         <input type="hidden" name="user_id" id="modal-perm-user-id">
 
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                            <span style="font-size:0.85rem; font-weight:600; color:#334155;">Available Features (11)</span>
+                            <span style="font-size:0.85rem; font-weight:600; color:#334155;">Available Features (<?= count($NOC_FEATURES) ?>)</span>
                             <div style="display:flex; gap:6px;">
                                 <button type="button" class="btn-secondary" style="padding:2px 8px; font-size:0.75rem;" onclick="toggleAllPermCheckboxes('modal-perm-grid', true)">Select All</button>
                                 <button type="button" class="btn-secondary" style="padding:2px 8px; font-size:0.75rem;" onclick="toggleAllPermCheckboxes('modal-perm-grid', false)">Deselect All</button>
