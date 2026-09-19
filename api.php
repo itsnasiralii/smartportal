@@ -35,6 +35,8 @@ $action_permissions = [
     'calculate_roster' => ['roster'],
     'get_router_meta' => ['router'],
     'get_router_commands' => ['router'],
+    'get_router_inventory_meta' => ['router'],
+    'get_router_inventory' => ['router'],
     'get_vpbx_data' => ['vpbx'],
     'add_vpbx_outgoing' => ['vpbx'],
     'update_vpbx_outgoing' => ['vpbx'],
@@ -789,6 +791,110 @@ if ($action === 'get_router_commands') {
     echo json_encode([
         'success' => true,
         'commands' => $stmt->fetchAll(PDO::FETCH_ASSOC)
+    ]);
+    exit;
+}
+
+// -----------------------------------------------------------------------------
+// ROUTER INVENTORY ENDPOINTS
+// -----------------------------------------------------------------------------
+if ($action === 'get_router_inventory_meta') {
+    $devices = $pdo->query("
+        SELECT d.id, d.hostname, d.platform, d.source_name, d.imported_at,
+               COUNT(DISTINCT i.id) AS interface_count,
+               COUNT(DISTINCT v.id) AS vrf_count,
+               COUNT(DISTINCT p.id) AS peer_count
+        FROM router_devices d
+        LEFT JOIN router_interfaces i ON i.device_id = d.id
+        LEFT JOIN router_vrfs v ON v.device_id = d.id
+        LEFT JOIN router_bgp_peers p ON p.device_id = d.id
+        GROUP BY d.id
+        ORDER BY d.hostname COLLATE NOCASE
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode(['success' => true, 'devices' => $devices]);
+    exit;
+}
+
+function router_guess_point_to_point_peer(string $ip, int $prefix): string {
+    $long = ip2long($ip);
+    if ($long === false) return '';
+
+    if ($prefix === 30) {
+        $network = $long & -4;
+        if ($long === $network + 1) return long2ip($network + 2);
+        if ($long === $network + 2) return long2ip($network + 1);
+    }
+
+    if ($prefix === 31) {
+        return long2ip($long ^ 1);
+    }
+
+    return '';
+}
+
+if ($action === 'get_router_inventory') {
+    $deviceId = intval($_GET['device_id'] ?? 0);
+    if ($deviceId <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Select a stored router first.']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("SELECT id, hostname, platform, source_name, imported_at FROM router_devices WHERE id = ?");
+    $stmt->execute([$deviceId]);
+    $device = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$device) {
+        echo json_encode(['success' => false, 'message' => 'Stored router was not found.']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT i.id, i.interface_name, i.description, i.client_name, i.vlan_id, i.vrf, i.bandwidth_kbps,
+               ip.ip_address, ip.subnet_mask, ip.prefix_length, ip.is_secondary
+        FROM router_interfaces i
+        LEFT JOIN router_interface_ips ip ON ip.interface_id = i.id
+        WHERE i.device_id = ?
+        ORDER BY i.client_name COLLATE NOCASE, i.interface_name COLLATE NOCASE, ip.is_secondary ASC, ip.id ASC
+    ");
+    $stmt->execute([$deviceId]);
+    $interfaces = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($interfaces as &$interfaceRow) {
+        $interfaceRow['likely_peer_ip'] = router_guess_point_to_point_peer(
+            (string)($interfaceRow['ip_address'] ?? ''),
+            (int)($interfaceRow['prefix_length'] ?? 0)
+        );
+    }
+    unset($interfaceRow);
+
+    $stmt = $pdo->prepare("
+        SELECT id, vrf, peer_ip, remote_asn, import_policy, export_policy, import_prefix, export_prefix
+        FROM router_bgp_peers
+        WHERE device_id = ?
+        ORDER BY vrf COLLATE NOCASE, peer_ip
+    ");
+    $stmt->execute([$deviceId]);
+    $peers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmt = $pdo->prepare("SELECT vrf_name FROM router_vrfs WHERE device_id = ? ORDER BY vrf_name COLLATE NOCASE");
+    $stmt->execute([$deviceId]);
+    $vrfs = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $stmt = $pdo->prepare("SELECT name FROM router_prefix_lists WHERE device_id = ? ORDER BY name COLLATE NOCASE");
+    $stmt->execute([$deviceId]);
+    $prefixLists = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $stmt = $pdo->prepare("SELECT name FROM router_route_policies WHERE device_id = ? ORDER BY name COLLATE NOCASE");
+    $stmt->execute([$deviceId]);
+    $routePolicies = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    echo json_encode([
+        'success' => true,
+        'device' => $device,
+        'interfaces' => $interfaces,
+        'peers' => $peers,
+        'vrfs' => $vrfs,
+        'prefix_lists' => $prefixLists,
+        'route_policies' => $routePolicies
     ]);
     exit;
 }

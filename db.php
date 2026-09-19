@@ -383,6 +383,85 @@ if ($use_sqlite) {
             $pdo->prepare("INSERT OR REPLACE INTO router_command_meta (meta_key, meta_value) VALUES ('seeded_v1', ?)")->execute([date('c')]);
         }
 
+        // 10. Parsed router inventory imported from sanitized Huawei configurations
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hostname TEXT UNIQUE COLLATE NOCASE NOT NULL,
+                platform TEXT COLLATE NOCASE,
+                source_name TEXT,
+                imported_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_interfaces (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                interface_name TEXT NOT NULL COLLATE NOCASE,
+                description TEXT,
+                client_name TEXT COLLATE NOCASE,
+                vlan_id TEXT COLLATE NOCASE,
+                vrf TEXT COLLATE NOCASE,
+                bandwidth_kbps TEXT,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_interface_ips (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                interface_id INTEGER NOT NULL,
+                ip_address TEXT COLLATE NOCASE,
+                subnet_mask TEXT,
+                prefix_length INTEGER,
+                is_secondary INTEGER DEFAULT 0,
+                FOREIGN KEY(interface_id) REFERENCES router_interfaces(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_vrfs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                vrf_name TEXT NOT NULL COLLATE NOCASE,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_bgp_peers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                vrf TEXT COLLATE NOCASE,
+                peer_ip TEXT COLLATE NOCASE,
+                remote_asn TEXT,
+                import_policy TEXT COLLATE NOCASE,
+                export_policy TEXT COLLATE NOCASE,
+                import_prefix TEXT COLLATE NOCASE,
+                export_prefix TEXT COLLATE NOCASE,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_prefix_lists (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                name TEXT NOT NULL COLLATE NOCASE,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS router_route_policies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER NOT NULL,
+                name TEXT NOT NULL COLLATE NOCASE,
+                FOREIGN KEY(device_id) REFERENCES router_devices(id) ON DELETE CASCADE
+            )
+        ");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_interfaces_device ON router_interfaces(device_id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_interfaces_client ON router_interfaces(client_name)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_interfaces_vrf ON router_interfaces(vrf)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_interfaces_vlan ON router_interfaces(vlan_id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_peer_device ON router_bgp_peers(device_id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_router_peer_vrf ON router_bgp_peers(vrf)");
+
         $NOC_FEATURES = [
             'complaints' => '📁 Complaint Manager',
             'opening' => '🚨 Opening',

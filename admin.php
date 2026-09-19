@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once 'db.php';
 require_once 'noc_helpers.php';
+require_once 'router_config_parser.php';
 
 $admin_passcode = getenv('NOC_ADMIN_PASSWORD') ?: 'admin123';
 $authenticated = !empty($_SESSION['admin_logged_in']) || (($_SESSION['noc_role'] ?? '') === 'admin');
@@ -238,6 +239,58 @@ if ($authenticated && isset($_POST['del_router_command'])) {
     }
 }
 
+// IMPORT SANITIZED ROUTER CONFIGURATION INTO INVENTORY
+if ($authenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'import_router_config') {
+    $active_admin_tab = 'tab-admin-router';
+    $hostnameOverride = trim($_POST['inventory_hostname'] ?? '');
+    $configText = trim($_POST['router_config_text'] ?? '');
+    $sourceName = 'Pasted configuration';
+
+    if (!empty($_FILES['router_config_file']['name'])) {
+        $upload = $_FILES['router_config_file'];
+        if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $status_msg = 'Router configuration upload failed.';
+        } elseif (($upload['size'] ?? 0) > 8 * 1024 * 1024) {
+            $status_msg = 'Router configuration file must be smaller than 8 MB.';
+        } else {
+            $sourceName = basename((string)$upload['name']);
+            $configText = (string)file_get_contents($upload['tmp_name']);
+        }
+    }
+
+    if ($status_msg === '') {
+        if ($configText === '') {
+            $status_msg = 'Upload a router configuration file or paste the configuration text.';
+        } else {
+            try {
+                $summary = router_import_config($pdo, $configText, $sourceName, $hostnameOverride);
+                $status_msg = sprintf(
+                    'Imported %s (%s): %d interfaces, %d VRFs, %d BGP peers, %d prefix lists and %d route policies.',
+                    $summary['hostname'],
+                    $summary['platform'],
+                    $summary['interfaces'],
+                    $summary['vrfs'],
+                    $summary['bgp_peers'],
+                    $summary['prefix_lists'],
+                    $summary['route_policies']
+                );
+            } catch (Throwable $e) {
+                error_log((string)$e);
+                $status_msg = 'Router configuration could not be imported. Check the configuration format and server log.';
+            }
+        }
+    }
+}
+
+if ($authenticated && isset($_POST['del_router_device'])) {
+    $active_admin_tab = 'tab-admin-router';
+    $deviceId = intval($_POST['del_router_device']);
+    if ($deviceId > 0) {
+        $pdo->prepare("DELETE FROM router_devices WHERE id = ?")->execute([$deviceId]);
+        $status_msg = 'Stored router inventory deleted.';
+    }
+}
+
 // CRUD: RE-SYNC NMS EXCEL
 if ($authenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'resync_nms_excel') {
     $active_admin_tab = 'tab-admin-nms';
@@ -260,6 +313,18 @@ $vpbx_ivrs = $authenticated ? $pdo->query("SELECT * FROM vpbx_ivrs ORDER BY is_d
 $nms_total_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_clients")->fetchColumn() : 0;
 $nms_zte_count = $authenticated ? (int)$pdo->query("SELECT COUNT(*) FROM nms_clients WHERE is_zte = 1")->fetchColumn() : 0;
 $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_commands ORDER BY platform COLLATE NOCASE, category COLLATE NOCASE, sort_order ASC, title COLLATE NOCASE")->fetchAll() : [];
+$router_devices_admin = $authenticated ? $pdo->query("
+    SELECT d.id, d.hostname, d.platform, d.source_name, d.imported_at,
+           COUNT(DISTINCT i.id) AS interface_count,
+           COUNT(DISTINCT v.id) AS vrf_count,
+           COUNT(DISTINCT p.id) AS peer_count
+    FROM router_devices d
+    LEFT JOIN router_interfaces i ON i.device_id = d.id
+    LEFT JOIN router_vrfs v ON v.device_id = d.id
+    LEFT JOIN router_bgp_peers p ON p.device_id = d.id
+    GROUP BY d.id
+    ORDER BY d.hostname COLLATE NOCASE
+")->fetchAll() : [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -790,6 +855,79 @@ $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_comm
 
             <!-- ADMIN TAB: ROUTER COMMANDS -->
             <div id="tab-admin-router" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-router' ? 'active' : '' ?>">
+                <div class="panel-card" style="margin-bottom:20px; border-left:5px solid #2563eb;">
+                    <div class="panel-header">
+                        <h2>📥 Router Configuration Inventory</h2>
+                        <p>Upload or paste a sanitized Huawei configuration. The parser builds Router → Client → VRF → Interface → IP / BGP peer dropdown data automatically.</p>
+                    </div>
+                    <div class="panel-body">
+                        <form method="POST" action="admin.php" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf']) ?>">
+                            <input type="hidden" name="action" value="import_router_config">
+
+                            <div class="form-row">
+                                <div class="form-group col-half">
+                                    <label>Configuration File</label>
+                                    <input type="file" name="router_config_file" accept=".txt,.cfg,.conf,.log">
+                                    <small>TXT/CFG/CONF/LOG, maximum 8 MB.</small>
+                                </div>
+                                <div class="form-group col-half">
+                                    <label>Hostname Override (Optional)</label>
+                                    <input type="text" name="inventory_hostname" placeholder="Leave blank to use sysname from config">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Or Paste Configuration</label>
+                                <textarea name="router_config_text" rows="7" placeholder="sysname KHI-PE-NE40EX8A-B1&#10;#&#10;interface Eth-Trunk31.846&#10; description ...&#10; vlan-type dot1q 846&#10; ip binding vpn-instance CUSTOMER_VRF&#10; ip address 192.0.2.1 255.255.255.252"></textarea>
+                            </div>
+
+                            <button type="submit" class="btn-primary">⚙️ Parse &amp; Store Router Inventory</button>
+                        </form>
+
+                        <h3 style="margin:28px 0 12px;">Stored Routers (<?= count($router_devices_admin ?? []) ?>)</h3>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Router</th>
+                                        <th>Platform</th>
+                                        <th>Interfaces</th>
+                                        <th>VRFs</th>
+                                        <th>BGP Peers</th>
+                                        <th>Source</th>
+                                        <th>Imported</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach (($router_devices_admin ?? []) as $device): ?>
+                                    <tr>
+                                        <td><strong><?= htmlspecialchars($device['hostname']) ?></strong></td>
+                                        <td><?= htmlspecialchars($device['platform'] ?: 'Huawei') ?></td>
+                                        <td><?= (int)$device['interface_count'] ?></td>
+                                        <td><?= (int)$device['vrf_count'] ?></td>
+                                        <td><?= (int)$device['peer_count'] ?></td>
+                                        <td><?= htmlspecialchars($device['source_name'] ?: '—') ?></td>
+                                        <td><?= htmlspecialchars($device['imported_at'] ?: '—') ?></td>
+                                        <td>
+                                            <form method="POST" action="admin.php" onsubmit="return confirm('Delete this stored router inventory?')">
+                                                <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf']) ?>">
+                                                <input type="hidden" name="del_router_device" value="<?= (int)$device['id'] ?>">
+                                                <button type="submit" class="btn-danger">Delete</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                <?php if (empty($router_devices_admin)): ?>
+                                    <tr><td colspan="8" style="text-align:center; padding:22px; color:#64748b;">No router configurations imported yet.</td></tr>
+                                <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="panel-card" style="margin-bottom:20px;">
                     <div class="panel-header">
                         <h2>🛠️ Router Command Database</h2>

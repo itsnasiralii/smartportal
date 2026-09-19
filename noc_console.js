@@ -38,7 +38,7 @@ function switchTab(tabId) {
     if (tabId === 'tab-roster') calculateRoster();
     if (tabId === 'tab-vpbx') run(loadVpbxData);
     if (tabId === 'tab-nms') searchNmsClients(1);
-    if (tabId === 'tab-router') loadRouterCommandMeta();
+    if (tabId === 'tab-router') loadRouterWorkspace();
 }
 function options(id, values) {
     const old = val(id);
@@ -1590,10 +1590,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-/* Router Commands Library — database-backed, relevant-only */
+/* Router Commands Library + parsed router inventory */
 let routerCommandMeta = null;
 let routerCommands = [];
 let routerCommandSearchTimer = null;
+let routerInventoryMeta = null;
+let routerInventory = null;
 
 function routerCommandValues() {
     return {
@@ -1623,6 +1625,10 @@ function routerCommandMissingVariables(template) {
     return missing;
 }
 
+async function loadRouterWorkspace() {
+    await Promise.all([loadRouterCommandMeta(), loadRouterInventoryMeta()]);
+}
+
 async function loadRouterCommandMeta() {
     if (!$('router-platform-filter')) return;
     if (routerCommandMeta) return;
@@ -1640,7 +1646,371 @@ async function loadRouterCommandMeta() {
     (result.platforms || []).forEach(platform => platformSelect.add(new Option(platform, platform)));
 }
 
-function handleRouterPlatformChange() {
+async function loadRouterInventoryMeta() {
+    const deviceSelect = $('router-device-filter');
+    if (!deviceSelect || routerInventoryMeta) return;
+
+    const response = await fetch('api.php?' + new URLSearchParams({action:'get_router_inventory_meta'}));
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+        notice(result.message || 'Unable to load stored router inventory.', true);
+        return;
+    }
+
+    routerInventoryMeta = result;
+    deviceSelect.replaceChildren(new Option('Select Stored Router', ''));
+    (result.devices || []).forEach(device => {
+        const label = device.hostname + (device.platform ? ' — ' + device.platform : '');
+        const option = new Option(label, String(device.id));
+        option.dataset.platform = device.platform || '';
+        deviceSelect.add(option);
+    });
+}
+
+function normalizeRouterInventory(result) {
+    const map = new Map();
+    (result.interfaces || []).forEach(row => {
+        const key = String(row.id);
+        if (!map.has(key)) {
+            map.set(key, {
+                id: Number(row.id),
+                interface_name: row.interface_name || '',
+                description: row.description || '',
+                client_name: row.client_name || '',
+                vlan_id: row.vlan_id || '',
+                vrf: row.vrf || '',
+                bandwidth_kbps: row.bandwidth_kbps || '',
+                ips: []
+            });
+        }
+        if (row.ip_address) {
+            map.get(key).ips.push({
+                ip_address: row.ip_address,
+                subnet_mask: row.subnet_mask || '',
+                prefix_length: Number(row.prefix_length || 0),
+                is_secondary: Number(row.is_secondary || 0),
+                likely_peer_ip: row.likely_peer_ip || ''
+            });
+        }
+    });
+
+    const interfaces = [...map.values()];
+    interfaces.forEach(iface => {
+        const primary = iface.ips.find(ip => !ip.is_secondary) || iface.ips[0] || null;
+        iface.primary_ip = primary?.ip_address || '';
+        iface.subnet_mask = primary?.subnet_mask || '';
+        iface.prefix_length = primary?.prefix_length || 0;
+        iface.likely_peer_ip = primary?.likely_peer_ip || '';
+    });
+
+    return {
+        ...result,
+        interfaces,
+        peers: Array.isArray(result.peers) ? result.peers : [],
+        vrfs: Array.isArray(result.vrfs) ? result.vrfs : [],
+        prefix_lists: Array.isArray(result.prefix_lists) ? result.prefix_lists : [],
+        route_policies: Array.isArray(result.route_policies) ? result.route_policies : []
+    };
+}
+
+async function handleRouterDeviceChange() {
+    const deviceId = val('router-device-filter');
+    resetRouterInventorySelectors(false);
+    routerInventory = null;
+    clearRouterRuntimeValues();
+
+    if (!deviceId) {
+        setRouterHint('You can select a stored router to auto-fill client/VRF/interface/IP data, or use the command selector manually.');
+        updateRouterVariableVisibility();
+        renderRouterCommands();
+        return;
+    }
+
+    const response = await fetch('api.php?' + new URLSearchParams({action:'get_router_inventory', device_id:deviceId}));
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+        notice(result.message || 'Unable to load stored router details.', true);
+        return;
+    }
+
+    routerInventory = normalizeRouterInventory(result);
+    populateRouterClientOptions();
+    populateRouterInventoryVrfOptions();
+    populateRouterInterfaceOptions();
+    populateRouterPeerOptions();
+    populateRouterPolicyOptions();
+    populateRouterPrefixOptions();
+
+    await loadRouterCommandMeta();
+    const platform = routerInventory.device?.platform || '';
+    if (platform && [...$('router-platform-filter').options].some(o => o.value === platform)) {
+        $('router-platform-filter').value = platform;
+        handleRouterPlatformChange(true);
+    }
+
+    setRouterHint(
+        (routerInventory.device?.hostname || 'Router') +
+        ': ' + routerInventory.interfaces.length + ' interfaces, ' +
+        routerInventory.vrfs.length + ' VRFs, ' +
+        routerInventory.peers.length + ' BGP peers loaded.'
+    );
+}
+
+function routerInterfaceLabel(iface) {
+    const bits = [iface.interface_name];
+    if (iface.vlan_id) bits.push('VLAN ' + iface.vlan_id);
+    if (iface.vrf) bits.push(iface.vrf);
+    if (iface.primary_ip) bits.push(iface.primary_ip + (iface.prefix_length ? '/' + iface.prefix_length : ''));
+    return bits.join(' • ');
+}
+
+function routerClientLabel(iface) {
+    return iface.client_name || iface.description || iface.interface_name;
+}
+
+function uniqueValues(values) {
+    return [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))]
+        .sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
+}
+
+function populateRouterClientOptions() {
+    const select = $('router-client-filter');
+    select.replaceChildren(new Option('All Clients / Services', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+
+    uniqueValues(routerInventory.interfaces.map(routerClientLabel)).forEach(client => select.add(new Option(client, client)));
+    select.disabled = select.options.length <= 1;
+}
+
+function filteredRouterInterfaces() {
+    if (!routerInventory) return [];
+    const client = val('router-client-filter');
+    const vrf = val('router-inventory-vrf');
+    return routerInventory.interfaces.filter(iface => {
+        const matchesClient = !client || routerClientLabel(iface) === client;
+        const matchesVrf = !vrf || iface.vrf === vrf;
+        return matchesClient && matchesVrf;
+    });
+}
+
+function populateRouterInventoryVrfOptions() {
+    const select = $('router-inventory-vrf');
+    const previous = select.value;
+    select.replaceChildren(new Option('All VRFs', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+
+    const client = val('router-client-filter');
+    const interfaceVrfs = routerInventory.interfaces
+        .filter(iface => !client || routerClientLabel(iface) === client)
+        .map(iface => iface.vrf);
+    const peerVrfs = routerInventory.peers.map(peer => peer.vrf);
+    uniqueValues([...routerInventory.vrfs, ...interfaceVrfs, ...peerVrfs]).forEach(vrf => select.add(new Option(vrf, vrf)));
+
+    select.disabled = select.options.length <= 1;
+    if ([...select.options].some(o => o.value === previous)) select.value = previous;
+}
+
+function populateRouterInterfaceOptions() {
+    const select = $('router-interface-filter');
+    const previous = select.value;
+    select.replaceChildren(new Option('Select Interface', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+
+    filteredRouterInterfaces().forEach(iface => select.add(new Option(routerInterfaceLabel(iface), String(iface.id))));
+    select.disabled = select.options.length <= 1;
+    if ([...select.options].some(o => o.value === previous)) select.value = previous;
+}
+
+function populateRouterPeerOptions() {
+    const select = $('router-peer-filter');
+    const previous = select.value;
+    select.replaceChildren(new Option('Select Peer IP', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+
+    const vrf = val('router-inventory-vrf');
+    const peers = routerInventory.peers.filter(peer => !vrf || peer.vrf === vrf);
+    const seen = new Set();
+
+    peers.forEach(peer => {
+        if (!peer.peer_ip || seen.has(peer.peer_ip)) return;
+        seen.add(peer.peer_ip);
+        const label = peer.peer_ip +
+            (peer.remote_asn ? ' • AS' + peer.remote_asn : '') +
+            (peer.vrf ? ' • ' + peer.vrf : '');
+        const option = new Option(label, 'bgp:' + String(peer.id));
+        option.dataset.peerIp = peer.peer_ip;
+        option.dataset.vrf = peer.vrf || '';
+        select.add(option);
+    });
+
+    filteredRouterInterfaces().forEach(iface => {
+        const peerIp = iface.likely_peer_ip || '';
+        if (!peerIp || seen.has(peerIp)) return;
+        seen.add(peerIp);
+        const label = peerIp + ' • inferred from ' + iface.interface_name +
+            (iface.vrf ? ' • ' + iface.vrf : '');
+        const option = new Option(label, 'p2p:' + String(iface.id));
+        option.dataset.peerIp = peerIp;
+        option.dataset.vrf = iface.vrf || '';
+        select.add(option);
+    });
+
+    select.disabled = select.options.length <= 1;
+    if ([...select.options].some(o => o.value === previous)) select.value = previous;
+}
+
+function populateRouterPolicyOptions() {
+    const select = $('router-policy-filter');
+    select.replaceChildren(new Option('Select Route Policy', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+    uniqueValues(routerInventory.route_policies || []).forEach(name => select.add(new Option(name, name)));
+    select.disabled = select.options.length <= 1;
+}
+
+function populateRouterPrefixOptions() {
+    const select = $('router-prefix-filter');
+    select.replaceChildren(new Option('Select Prefix List', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+    uniqueValues(routerInventory.prefix_lists || []).forEach(name => select.add(new Option(name, name)));
+    select.disabled = select.options.length <= 1;
+}
+
+function handleRouterPolicyChange() {
+    if ($('router-policy')) $('router-policy').value = val('router-policy-filter');
+    updateRouterVariableVisibility();
+    renderRouterCommands();
+}
+
+function handleRouterPrefixChange() {
+    if ($('router-prefix')) $('router-prefix').value = val('router-prefix-filter');
+    updateRouterVariableVisibility();
+    renderRouterCommands();
+}
+
+function handleRouterClientChange() {
+    $('router-inventory-vrf').value = '';
+    $('router-interface-filter').value = '';
+    $('router-peer-filter').value = '';
+    clearRouterRuntimeValues();
+    handleRouterPolicyChange();
+    handleRouterPrefixChange();
+    populateRouterInventoryVrfOptions();
+    populateRouterInterfaceOptions();
+    populateRouterPeerOptions();
+    updateRouterVariableVisibility();
+    renderRouterCommands();
+}
+
+function handleRouterInventoryVrfChange() {
+    $('router-interface-filter').value = '';
+    $('router-peer-filter').value = '';
+    clearRouterRuntimeValues();
+    handleRouterPolicyChange();
+    handleRouterPrefixChange();
+    const vrf = val('router-inventory-vrf');
+    if ($('router-vrf')) $('router-vrf').value = vrf;
+    populateRouterInterfaceOptions();
+    populateRouterPeerOptions();
+    updateRouterVariableVisibility();
+    renderRouterCommands();
+}
+
+function handleRouterInterfaceChange() {
+    const id = Number(val('router-interface-filter'));
+    if (!routerInventory || !id) {
+        updateRouterVariableVisibility();
+        renderRouterCommands();
+        return;
+    }
+
+    const iface = routerInventory.interfaces.find(item => Number(item.id) === id);
+    if (!iface) return;
+
+    const client = routerClientLabel(iface);
+    if ([...$('router-client-filter').options].some(o => o.value === client)) $('router-client-filter').value = client;
+
+    if (iface.vrf && [...$('router-inventory-vrf').options].some(o => o.value === iface.vrf)) {
+        $('router-inventory-vrf').value = iface.vrf;
+        if ($('router-vrf')) $('router-vrf').value = iface.vrf;
+    }
+
+    if ($('router-vlan')) $('router-vlan').value = iface.vlan_id || '';
+    const trunkMatch = String(iface.interface_name || '').match(/^Eth-Trunk(\d+)/i);
+    if ($('router-trunk')) $('router-trunk').value = trunkMatch ? trunkMatch[1] : '';
+
+    populateRouterPeerOptions();
+    const peerOptions = [...$('router-peer-filter').options].filter(o => o.value);
+    if (peerOptions.length === 1) {
+        $('router-peer-filter').value = peerOptions[0].value;
+        handleRouterPeerChange();
+    } else {
+        updateRouterVariableVisibility();
+        renderRouterCommands();
+    }
+}
+
+function handleRouterPeerChange() {
+    const raw = val('router-peer-filter');
+    if (!routerInventory || !raw) {
+        if ($('router-peer-ip')) $('router-peer-ip').value = '';
+        if ($('router-ip')) $('router-ip').value = '';
+        updateRouterVariableVisibility();
+        renderRouterCommands();
+        return;
+    }
+
+    const selectedOption = $('router-peer-filter').selectedOptions[0];
+    const peerIp = selectedOption?.dataset.peerIp || '';
+    const peerVrf = selectedOption?.dataset.vrf || '';
+
+    if ($('router-peer-ip')) $('router-peer-ip').value = peerIp;
+    if ($('router-ip')) $('router-ip').value = peerIp;
+    if (peerVrf && $('router-vrf')) $('router-vrf').value = peerVrf;
+
+    if (raw.startsWith('bgp:')) {
+        const id = Number(raw.split(':')[1]);
+        const peer = routerInventory.peers.find(item => Number(item.id) === id);
+        if (peer) {
+            if (peer.import_policy) {
+                if ($('router-policy')) $('router-policy').value = peer.import_policy;
+                if ([...$('router-policy-filter').options].some(o => o.value === peer.import_policy)) $('router-policy-filter').value = peer.import_policy;
+            } else if (peer.export_policy) {
+                if ($('router-policy')) $('router-policy').value = peer.export_policy;
+                if ([...$('router-policy-filter').options].some(o => o.value === peer.export_policy)) $('router-policy-filter').value = peer.export_policy;
+            }
+
+            if (peer.import_prefix) {
+                if ($('router-prefix')) $('router-prefix').value = peer.import_prefix;
+                if ([...$('router-prefix-filter').options].some(o => o.value === peer.import_prefix)) $('router-prefix-filter').value = peer.import_prefix;
+            } else if (peer.export_prefix) {
+                if ($('router-prefix')) $('router-prefix').value = peer.export_prefix;
+                if ([...$('router-prefix-filter').options].some(o => o.value === peer.export_prefix)) $('router-prefix-filter').value = peer.export_prefix;
+            }
+        }
+    }
+
+    updateRouterVariableVisibility();
+    renderRouterCommands();
+}
+
+function resetRouterInventorySelectors(resetDevice = true) {
+    if (resetDevice && $('router-device-filter')) $('router-device-filter').value = '';
+    for (const [id, label] of [
+        ['router-client-filter','All Clients / Services'],
+        ['router-inventory-vrf','All VRFs'],
+        ['router-interface-filter','Select Interface'],
+        ['router-peer-filter','Select Peer IP'],
+        ['router-policy-filter','Select Route Policy'],
+        ['router-prefix-filter','Select Prefix List']
+    ]) {
+        const select = $(id);
+        if (!select) continue;
+        select.replaceChildren(new Option(label, ''));
+        select.disabled = true;
+    }
+}
+
+function handleRouterPlatformChange(preserveRuntime = false) {
     const platform = val('router-platform-filter');
     const categorySelect = $('router-category-filter');
     const commandSelect = $('router-command-select');
@@ -1653,12 +2023,12 @@ function handleRouterPlatformChange() {
     commandSelect.disabled = true;
     search.value = '';
     search.disabled = true;
-    clearRouterRuntimeValues();
+    if (!preserveRuntime) clearRouterRuntimeValues();
     updateRouterVariableVisibility();
     renderRouterCommands();
 
     if (!platform || !routerCommandMeta) {
-        setRouterHint('Select a router/platform and troubleshooting task to load commands.');
+        if (!routerInventory) setRouterHint('Select a router/platform and troubleshooting task to load commands.');
         return;
     }
 
@@ -1667,7 +2037,7 @@ function handleRouterPlatformChange() {
         const label = item.count > 1 ? `${item.name} (${item.count})` : item.name;
         categorySelect.add(new Option(label, item.name));
     });
-    setRouterHint('Select the troubleshooting task for ' + platform + '.');
+    if (!routerInventory) setRouterHint('Select the troubleshooting task for ' + platform + '.');
 }
 
 function handleRouterCategoryChange() {
@@ -1676,13 +2046,11 @@ function handleRouterCategoryChange() {
     $('router-command-filter').disabled = !category;
     $('router-command-select').replaceChildren(new Option('All Relevant Commands', ''));
     $('router-command-select').disabled = true;
-    clearRouterRuntimeValues();
 
     if (!category) {
         routerCommands = [];
         updateRouterVariableVisibility();
         renderRouterCommands();
-        setRouterHint('Select a troubleshooting task.');
         return;
     }
 
@@ -1730,7 +2098,7 @@ async function loadRelevantRouterCommands() {
     updateRouterVariableVisibility();
     renderRouterCommands();
     $('router-flow-note').hidden = false;
-    setRouterHint(routerCommands.length ? 'Stored values come from the database. Enter only the runtime fields shown below.' : 'No command is stored for this selection.');
+    setRouterHint(routerCommands.length ? 'Select a command. Stored router values are auto-filled; only missing runtime values remain editable.' : 'No command is stored for this selection.');
 }
 
 function getVisibleRouterCommands() {
@@ -1747,8 +2115,13 @@ function updateRouterVariableVisibility() {
         }
     });
 
+    const values = routerCommandValues();
+    const inventoryAutofill = new Set(['vlan','trunk','ip','vrf','peer_ip','policy','prefix']);
+
     document.querySelectorAll('[data-router-var]').forEach(group => {
-        group.hidden = !required.has(group.dataset.routerVar);
+        const key = group.dataset.routerVar;
+        const autoFilled = !!routerInventory && inventoryAutofill.has(key) && !!values[key];
+        group.hidden = !required.has(key) || autoFilled;
     });
 }
 
@@ -1824,6 +2197,8 @@ function resetRouterCommandInputs(resetSelectors = true) {
     clearRouterRuntimeValues();
 
     if (resetSelectors) {
+        resetRouterInventorySelectors(true);
+        routerInventory = null;
         if ($('router-platform-filter')) $('router-platform-filter').value = '';
         if ($('router-category-filter')) {
             $('router-category-filter').replaceChildren(new Option('Select Task', ''));
@@ -1839,14 +2214,13 @@ function resetRouterCommandInputs(resetSelectors = true) {
         }
         routerCommands = [];
         $('router-flow-note').hidden = true;
-        setRouterHint('Select a router/platform and troubleshooting task to load commands.');
+        setRouterHint('You can select a stored router to auto-fill client/VRF/interface/IP data, or use the command selector manually.');
     }
 
     updateRouterVariableVisibility();
     renderRouterCommands();
 }
 
-// router-auto-load
 document.addEventListener('DOMContentLoaded', () => {
-    if ($('tab-router')?.classList.contains('active')) loadRouterCommandMeta();
+    if ($('tab-router')?.classList.contains('active')) loadRouterWorkspace();
 });

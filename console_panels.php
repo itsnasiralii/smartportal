@@ -835,6 +835,55 @@
    <div class="router-filter-box">
     <div class="router-filter-grid">
      <div class="form-group">
+      <label for="router-device-filter">🖥️ Stored Router</label>
+      <select id="router-device-filter" onchange="handleRouterDeviceChange()">
+       <option value="">Select Stored Router</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-client-filter">👤 Client / Service</label>
+      <select id="router-client-filter" onchange="handleRouterClientChange()" disabled>
+       <option value="">All Clients / Services</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-inventory-vrf">🧩 Stored VRF</label>
+      <select id="router-inventory-vrf" onchange="handleRouterInventoryVrfChange()" disabled>
+       <option value="">All VRFs</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-interface-filter">🔌 Interface</label>
+      <select id="router-interface-filter" onchange="handleRouterInterfaceChange()" disabled>
+       <option value="">Select Interface</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-peer-filter">📡 Peer IP</label>
+      <select id="router-peer-filter" onchange="handleRouterPeerChange()" disabled>
+       <option value="">Select Peer IP</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-policy-filter">🛡️ Stored Route Policy</label>
+      <select id="router-policy-filter" onchange="handleRouterPolicyChange()" disabled>
+       <option value="">Select Route Policy</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-prefix-filter">📚 Stored Prefix List</label>
+      <select id="router-prefix-filter" onchange="handleRouterPrefixChange()" disabled>
+       <option value="">Select Prefix List</option>
+      </select>
+     </div>
+
+     <div class="form-group">
       <label for="router-platform-filter">🧭 Router / Platform</label>
       <select id="router-platform-filter" onchange="handleRouterPlatformChange()">
        <option value="">Select Router / Platform</option>
@@ -902,7 +951,7 @@
     </div>
 
     <div class="router-filter-footer">
-     <div id="router-selection-hint">Select a router/platform and troubleshooting task to load commands.</div>
+     <div id="router-selection-hint">You can select a stored router to auto-fill client/VRF/interface/IP data, or use the command selector manually.</div>
      <button type="button" class="btn-secondary" onclick="resetRouterCommandInputs(true)">Reset All</button>
     </div>
    </div>
