@@ -38,6 +38,7 @@ function switchTab(tabId) {
     if (tabId === 'tab-roster') calculateRoster();
     if (tabId === 'tab-vpbx') run(loadVpbxData);
     if (tabId === 'tab-nms') searchNmsClients(1);
+    if (tabId === 'tab-router') renderRouterCommands();
 }
 function options(id, values) {
     const old = val(id);
@@ -1588,3 +1589,70 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Escape') closeNmsDetailModal();
     });
 });
+
+/* Router Commands Library */
+let routerCommandFiltersReady = false;
+
+function routerCommandValues() {
+    return {
+        vlan: val('router-vlan'),
+        trunk: val('router-trunk'),
+        ip: val('router-ip'),
+        vrf: val('router-vrf'),
+        peer_ip: val('router-peer-ip'),
+        search: val('router-config-search'),
+        policy: val('router-policy'),
+        prefix: val('router-prefix')
+    };
+}
+function buildRouterCommand(template) {
+    const values = routerCommandValues();
+    return String(template || '').replace(/\{([a-z0-9_]+)\}/gi, (full, key) => values[key] || full);
+}
+function routerCommandMissingVariables(template) {
+    const values = routerCommandValues(), missing = [];
+    for (const match of String(template || '').matchAll(/\{([a-z0-9_]+)\}/gi)) {
+        const key = match[1];
+        if (!values[key] && !missing.includes(key)) missing.push(key);
+    }
+    return missing;
+}
+function initRouterCommandFilters() {
+    if (routerCommandFiltersReady || !$('router-platform-filter') || !window.ROUTER_COMMANDS) return;
+    const commands = Array.isArray(window.ROUTER_COMMANDS.commands) ? window.ROUTER_COMMANDS.commands : [];
+    [...new Set(commands.map(c => c.platform).filter(Boolean))].sort().forEach(v => $('router-platform-filter').add(new Option(v,v)));
+    [...new Set(commands.map(c => c.category).filter(Boolean))].sort().forEach(v => $('router-category-filter').add(new Option(v,v)));
+    routerCommandFiltersReady = true;
+}
+function renderRouterCommands() {
+    const target = $('router-command-list');
+    if (!target || !window.ROUTER_COMMANDS) return;
+    initRouterCommandFilters();
+    const commands = Array.isArray(window.ROUTER_COMMANDS.commands) ? window.ROUTER_COMMANDS.commands : [];
+    const q = val('router-command-filter').toLowerCase(), platform = val('router-platform-filter'), category = val('router-category-filter');
+    const visible = commands.map((c,i)=>({...c,_index:i})).filter(c => {
+        const hay = [c.title,c.platform,c.category,c.description,c.template].join(' ').toLowerCase();
+        return (!q || hay.includes(q)) && (!platform || c.platform===platform) && (!category || c.category===category);
+    });
+    $('router-command-count').textContent = visible.length + ' command' + (visible.length===1?'':'s') + ' shown';
+    target.innerHTML = visible.map(c => {
+        const generated = buildRouterCommand(c.template), missing = routerCommandMissingVariables(c.template);
+        const status = missing.length ? '<span class="router-command-status pending">Needs: '+missing.map(escapeHtml).join(', ')+'</span>' : '<span class="router-command-status ready">Ready</span>';
+        return `<article class="router-command-card"><div class="router-command-card-top"><div><div class="router-command-tags"><span class="router-tag platform">${escapeHtml(c.platform||'General')}</span><span class="router-tag">${escapeHtml(c.category||'Command')}</span></div><h3>${escapeHtml(c.title||'Router command')}</h3></div>${status}</div><p>${escapeHtml(c.description||'')}</p><pre class="router-command-output">${escapeHtml(generated)}</pre><div class="router-command-actions"><button type="button" class="btn-copy" onclick="copyRouterCommand(${c._index})">📋 Copy Command</button><small>Template: ${escapeHtml(c.template||'')}</small></div></article>`;
+    }).join('') || '<div class="router-empty-state">No commands match the selected filters.</div>';
+}
+async function copyRouterCommand(index) {
+    const commands = Array.isArray(window.ROUTER_COMMANDS?.commands) ? window.ROUTER_COMMANDS.commands : [];
+    const c = commands[index]; if (!c) return;
+    const missing = routerCommandMissingVariables(c.template);
+    if (missing.length) return notice('Fill required variable(s): ' + missing.join(', '), true);
+    try { await navigator.clipboard.writeText(buildRouterCommand(c.template)); notice('Router command copied.'); }
+    catch { notice('Unable to copy automatically. Copy it manually.', true); }
+}
+function resetRouterCommandInputs() {
+    ['router-vlan','router-trunk','router-ip','router-vrf','router-peer-ip','router-config-search','router-policy','router-prefix'].forEach(id=>{ if($(id)) $(id).value=''; });
+    if ($('router-command-filter')) $('router-command-filter').value='';
+    if ($('router-platform-filter')) $('router-platform-filter').value='';
+    if ($('router-category-filter')) $('router-category-filter').value='';
+    renderRouterCommands();
+}
