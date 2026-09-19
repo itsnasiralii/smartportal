@@ -816,6 +816,23 @@ if ($action === 'get_router_inventory_meta') {
     exit;
 }
 
+function router_guess_point_to_point_peer(string $ip, int $prefix): string {
+    $long = ip2long($ip);
+    if ($long === false) return '';
+
+    if ($prefix === 30) {
+        $network = $long & -4;
+        if ($long === $network + 1) return long2ip($network + 2);
+        if ($long === $network + 2) return long2ip($network + 1);
+    }
+
+    if ($prefix === 31) {
+        return long2ip($long ^ 1);
+    }
+
+    return '';
+}
+
 if ($action === 'get_router_inventory') {
     $deviceId = intval($_GET['device_id'] ?? 0);
     if ($deviceId <= 0) {
@@ -841,6 +858,13 @@ if ($action === 'get_router_inventory') {
     ");
     $stmt->execute([$deviceId]);
     $interfaces = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($interfaces as &$interfaceRow) {
+        $interfaceRow['likely_peer_ip'] = router_guess_point_to_point_peer(
+            (string)($interfaceRow['ip_address'] ?? ''),
+            (int)($interfaceRow['prefix_length'] ?? 0)
+        );
+    }
+    unset($interfaceRow);
 
     $stmt = $pdo->prepare("
         SELECT id, vrf, peer_ip, remote_asn, import_policy, export_policy, import_prefix, export_prefix
