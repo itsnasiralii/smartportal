@@ -835,6 +835,18 @@
    <div class="router-filter-box">
     <div class="router-filter-grid">
      <div class="form-group">
+      <label for="router-global-search">🔎 Quick Find Across All Routers</label>
+      <input id="router-global-search" type="search" placeholder="Client, IP, Link ID, VLAN, VRF..." oninput="queueRouterGlobalSearch()">
+     </div>
+
+     <div class="form-group">
+      <label for="router-global-results">🎯 Matching Circuit</label>
+      <select id="router-global-results" onchange="handleRouterGlobalResult()" disabled>
+       <option value="">Type 2+ characters to search</option>
+      </select>
+     </div>
+
+     <div class="form-group">
       <label for="router-device-filter">🖥️ Stored Router</label>
       <select id="router-device-filter" onchange="handleRouterDeviceChange()">
        <option value="">Select Stored Router</option>
@@ -842,9 +854,23 @@
      </div>
 
      <div class="form-group">
-      <label for="router-client-filter">👤 Client / Service</label>
+      <label for="router-client-filter">👤 Client</label>
       <select id="router-client-filter" onchange="handleRouterClientChange()" disabled>
-       <option value="">All Clients / Services</option>
+       <option value="">All Clients</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-service-filter">🧾 Service Type</label>
+      <select id="router-service-filter" onchange="handleRouterServiceChange()" disabled>
+       <option value="">All Services</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-site-filter">📍 Site / Branch</label>
+      <select id="router-site-filter" onchange="handleRouterSiteChange()" disabled>
+       <option value="">All Sites</option>
       </select>
      </div>
 
@@ -919,6 +945,11 @@
       <input id="router-trunk" placeholder="e.g. 31" oninput="renderRouterCommands()">
      </div>
 
+     <div class="form-group" data-router-var="interface" hidden>
+      <label for="router-interface-name">🔌 Interface Name</label>
+      <input id="router-interface-name" placeholder="e.g. Eth-Trunk31.846" oninput="renderRouterCommands()">
+     </div>
+
      <div class="form-group" data-router-var="ip" hidden>
       <label for="router-ip">🌐 Destination IP</label>
       <input id="router-ip" placeholder="e.g. 192.0.2.10" oninput="renderRouterCommands()">
@@ -954,6 +985,24 @@
      <div id="router-selection-hint">You can select a stored router to auto-fill client/VRF/interface/IP data, or use the command selector manually.</div>
      <button type="button" class="btn-secondary" onclick="resetRouterCommandInputs(true)">Reset All</button>
     </div>
+   </div>
+
+   <div id="router-peak-panel" class="router-peak-panel" hidden>
+    <div class="router-peak-title-row">
+     <div>
+      <div class="router-eyebrow">Peak operational content</div>
+      <h3>Router Snapshot</h3>
+     </div>
+     <span id="router-peak-source" class="router-readonly-badge"></span>
+    </div>
+    <div id="router-device-facts" class="router-fact-grid"></div>
+
+    <div id="router-circuit-snapshot" class="router-circuit-snapshot" hidden>
+     <div class="router-circuit-title">Selected Circuit / Interface</div>
+     <div id="router-circuit-grid" class="router-circuit-grid"></div>
+    </div>
+
+    <div id="router-routing-summary" class="router-routing-summary"></div>
    </div>
 
    <div id="router-flow-note" class="router-flow-note" hidden>
