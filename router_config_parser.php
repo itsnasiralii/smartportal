@@ -126,6 +126,17 @@ function router_parse_config(string $config, string $sourceName = ''): array {
                 ];
                 continue;
             }
+            if (preg_match('/^ip\s+address\s+(\d+\.\d+\.\d+\.\d+)\s+(\d{1,2})(?:\s+(sub))?/i', $trim, $m)) {
+                $prefix = max(0, min(32, (int)$m[2]));
+                $maskLong = $prefix === 0 ? 0 : ((0xFFFFFFFF << (32 - $prefix)) & 0xFFFFFFFF);
+                $interfaces[$currentInterface]['ips'][] = [
+                    'ip_address' => $m[1],
+                    'subnet_mask' => long2ip($maskLong),
+                    'prefix_length' => $prefix,
+                    'is_secondary' => !empty($m[3]) ? 1 : 0
+                ];
+                continue;
+            }
             if (preg_match('/^qos\s+car\s+cir\s+(\d+)/i', $trim, $m)) {
                 $interfaces[$currentInterface]['bandwidth_kbps'] = $m[1];
                 continue;
@@ -195,6 +206,8 @@ function router_parse_config(string $config, string $sourceName = ''): array {
             $iface['client_name'] = router_guess_client($iface['description']);
         }
         if ($iface['vlan_id'] === '' && preg_match('/\.(\d+)$/', $iface['name'], $m)) {
+            $iface['vlan_id'] = $m[1];
+        } elseif ($iface['vlan_id'] === '' && preg_match('/^Vlanif\s*(\d+)$/i', $iface['name'], $m)) {
             $iface['vlan_id'] = $m[1];
         }
     }
