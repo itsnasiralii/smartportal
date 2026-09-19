@@ -327,7 +327,7 @@ $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_comm
             <?php endif; ?>
 
             <!-- ADMIN TAB 1: COMPLAINTS CRUD -->
-            <div id="tab-admin-complaints" class="tab-content active">
+            <div id="tab-admin-complaints" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-complaints' ? 'active' : '' ?>">
                 <div class="panel-card">
                     <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
                         <div>
@@ -381,7 +381,7 @@ $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_comm
             </div>
 
             <!-- ADMIN TAB 2: VENDORS MATRIX CRUD -->
-            <div id="tab-admin-vendors" class="tab-content">
+            <div id="tab-admin-vendors" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-vendors' ? 'active' : '' ?>">
                 <div class="panel-card">
                     <div class="panel-header">
                         <h2>🏪 Vendor Escalation Matrix Management</h2>
@@ -539,7 +539,7 @@ $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_comm
             </div>
 
             <!-- ADMIN TAB 3: USER AUTHENTICATION CRUD -->
-            <div id="tab-admin-users" class="tab-content">
+            <div id="tab-admin-users" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-users' ? 'active' : '' ?>">
                 <div class="panel-card">
                     <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                         <div>
@@ -724,7 +724,7 @@ $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_comm
             </div>
 
             <!-- ADMIN TAB 4: VPBX IVR MANAGEMENT CRUD -->
-            <div id="tab-admin-vpbx" class="tab-content">
+            <div id="tab-admin-vpbx" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-vpbx' ? 'active' : '' ?>">
                 <div class="panel-card">
                     <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div>
@@ -789,7 +789,7 @@ $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_comm
             </div>
 
             <!-- ADMIN TAB: ROUTER COMMANDS -->
-            <div id="tab-admin-router" class="tab-content">
+            <div id="tab-admin-router" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-router' ? 'active' : '' ?>">
                 <div class="panel-card" style="margin-bottom:20px;">
                     <div class="panel-header">
                         <h2>🛠️ Router Command Database</h2>
@@ -900,7 +900,7 @@ $router_commands_admin = $authenticated ? $pdo->query("SELECT * FROM router_comm
             </div>
 
             <!-- ADMIN TAB: NMS CUSTOMER DB -->
-            <div id="tab-admin-nms" class="tab-content">
+            <div id="tab-admin-nms" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-nms' ? 'active' : '' ?>">
                 <div class="panel-card" style="margin-bottom:20px; border-left:5px solid #2563eb;">
                     <div class="panel-body" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
                         <div>
