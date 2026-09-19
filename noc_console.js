@@ -1818,6 +1818,18 @@ function uniqueValues(values) {
         .sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
 }
 
+function baseFilteredRouterInterfaces() {
+    if (!routerInventory) return [];
+    const client = val('router-client-filter');
+    const service = val('router-service-filter');
+    const site = val('router-site-filter');
+    return routerInventory.interfaces.filter(iface =>
+        (!client || iface.client_name === client) &&
+        (!service || iface.service_type === service) &&
+        (!site || iface.site_name === site)
+    );
+}
+
 function populateRouterClientOptions() {
     const select = $('router-client-filter');
     select.replaceChildren(new Option('All Clients', ''));
@@ -1843,18 +1855,8 @@ function populateRouterSiteOptions() {
 }
 
 function filteredRouterInterfaces() {
-    if (!routerInventory) return [];
-    const client = val('router-client-filter');
-    const service = val('router-service-filter');
-    const site = val('router-site-filter');
     const vrf = val('router-inventory-vrf');
-
-    return routerInventory.interfaces.filter(iface =>
-        (!client || iface.client_name === client) &&
-        (!service || iface.service_type === service) &&
-        (!site || iface.site_name === site) &&
-        (!vrf || iface.vrf === vrf)
-    );
+    return baseFilteredRouterInterfaces().filter(iface => !vrf || iface.vrf === vrf);
 }
 
 function populateRouterInventoryVrfOptions() {
@@ -1863,9 +1865,12 @@ function populateRouterInventoryVrfOptions() {
     select.replaceChildren(new Option('All VRFs', ''));
     if (!routerInventory) { select.disabled = true; return; }
 
-    const interfaceVrfs = filteredRouterInterfaces().map(i => i.vrf);
-    const peerVrfs = routerInventory.peers.map(p => p.vrf);
-    uniqueValues([...routerInventory.vrfs, ...interfaceVrfs, ...peerVrfs]).forEach(vrf => select.add(new Option(vrf, vrf)));
+    const scopedInterfaces = baseFilteredRouterInterfaces();
+    const interfaceVrfs = scopedInterfaces.map(i => i.vrf);
+    const hasCircuitFilter = !!(val('router-client-filter') || val('router-service-filter') || val('router-site-filter'));
+    const peerVrfs = hasCircuitFilter ? [] : routerInventory.peers.map(p => p.vrf);
+    const allVrfs = hasCircuitFilter ? interfaceVrfs : [...routerInventory.vrfs, ...interfaceVrfs, ...peerVrfs];
+    uniqueValues(allVrfs).forEach(vrf => select.add(new Option(vrf, vrf)));
 
     select.disabled = select.options.length <= 1;
     if ([...select.options].some(o => o.value === previous)) select.value = previous;
@@ -1955,12 +1960,15 @@ function handleRouterPrefixChange() {
 }
 
 function handleRouterClientChange() {
+    if ($('router-inventory-vrf')) $('router-inventory-vrf').value = '';
     $('router-interface-filter').value = '';
     $('router-peer-filter').value = '';
     clearRouterRuntimeValues();
+    populateRouterInventoryVrfOptions();
     populateRouterInterfaceOptions();
     populateRouterPeerOptions();
     renderRouterCircuitSnapshot(null);
+    renderRouterRoutingContext();
     updateRouterVariableVisibility();
     renderRouterCommands();
 }
@@ -1982,6 +1990,7 @@ function handleRouterInventoryVrfChange() {
     populateRouterInterfaceOptions();
     populateRouterPeerOptions();
     renderRouterCircuitSnapshot(null);
+    renderRouterRoutingContext();
     updateRouterVariableVisibility();
     renderRouterCommands();
 }
@@ -2030,6 +2039,7 @@ function handleRouterInterfaceChange() {
     }
 
     renderRouterCircuitSnapshot(iface);
+    renderRouterRoutingContext();
 }
 
 function handleRouterPeerChange() {
@@ -2040,6 +2050,7 @@ function handleRouterPeerChange() {
         updateRouterVariableVisibility();
         renderRouterCommands();
         renderRouterCircuitSnapshot(getSelectedRouterInterface());
+        renderRouterRoutingContext();
         return;
     }
 
@@ -2071,6 +2082,7 @@ function handleRouterPeerChange() {
     updateRouterVariableVisibility();
     renderRouterCommands();
     renderRouterCircuitSnapshot(getSelectedRouterInterface());
+    renderRouterRoutingContext();
 }
 
 function getSelectedRouterInterface() {
@@ -2113,16 +2125,73 @@ function renderRouterPeakSummary() {
         routerFact('QoS / Static', Number(facts.qos_profiles || 0) + ' QoS profiles', Number(facts.static_routes || 0) + ' static routes')
     ].join('');
 
-    const routingBits = [];
-    if (device.bgp_asn) routingBits.push('BGP AS ' + device.bgp_asn + (device.router_id ? ' / RID ' + device.router_id : ''));
-    if (routerInventory.ospf_processes.length) routingBits.push(routerInventory.ospf_processes.length + ' OSPF/OSPFv3 processes');
-    if (routerInventory.isis_processes.length) routingBits.push(routerInventory.isis_processes.length + ' IS-IS process(es)');
-    if (routerInventory.qos_profiles.length) routingBits.push(routerInventory.qos_profiles.length + ' QoS profiles');
-    $('router-routing-summary').innerHTML = routingBits.length
-        ? '<strong>Core context:</strong> ' + routingBits.map(escapeHtml).join(' • ')
-        : '';
-
+    renderRouterRoutingContext();
     renderRouterCircuitSnapshot(null);
+}
+
+function parseRouterJsonList(value) {
+    if (Array.isArray(value)) return value;
+    if (!value) return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function renderRouterRoutingContext() {
+    const target = $('router-routing-summary');
+    if (!target || !routerInventory) return;
+
+    const device = routerInventory.device || {};
+    const coreBits = [];
+    if (device.bgp_asn) coreBits.push('BGP AS ' + device.bgp_asn + (device.router_id ? ' / RID ' + device.router_id : ''));
+    if (routerInventory.ospf_processes.length) coreBits.push(routerInventory.ospf_processes.length + ' OSPF/OSPFv3 processes');
+    if (routerInventory.isis_processes.length) coreBits.push(routerInventory.isis_processes.length + ' IS-IS process(es)');
+    if (routerInventory.qos_profiles.length) coreBits.push(routerInventory.qos_profiles.length + ' QoS profiles');
+
+    const rows = [];
+    if (coreBits.length) rows.push('<strong>Core:</strong> ' + coreBits.map(escapeHtml).join(' • '));
+
+    const vrfName = val('router-inventory-vrf') || getSelectedRouterInterface()?.vrf || '';
+    if (vrfName) {
+        const vrf = routerInventory.vrf_details.find(v => v.vrf_name === vrfName);
+        if (vrf) {
+            const bits = [];
+            if (vrf.route_distinguisher) bits.push('RD ' + vrf.route_distinguisher);
+            if (vrf.label_mode) bits.push('label ' + vrf.label_mode);
+            if (vrf.import_route_policy) bits.push('import policy ' + vrf.import_route_policy);
+            const inRt = parseRouterJsonList(vrf.import_targets);
+            const outRt = parseRouterJsonList(vrf.export_targets);
+            const imports = parseRouterJsonList(vrf.bgp_imports);
+            if (inRt.length) bits.push('RT-in ' + inRt.slice(0,4).join(', ') + (inRt.length > 4 ? ' +' + (inRt.length - 4) : ''));
+            if (outRt.length) bits.push('RT-out ' + outRt.slice(0,4).join(', ') + (outRt.length > 4 ? ' +' + (outRt.length - 4) : ''));
+            if (imports.length) bits.push('BGP imports ' + imports.slice(0,3).join(', ') + (imports.length > 3 ? ' +' + (imports.length - 3) : ''));
+
+            const ospf = routerInventory.ospf_processes.filter(p => p.vrf === vrfName);
+            if (ospf.length) bits.push(ospf.map(p => p.protocol + ' ' + p.process_id).join(', '));
+            rows.push('<strong>VRF ' + escapeHtml(vrfName) + ':</strong> ' + bits.map(escapeHtml).join(' • '));
+        }
+    }
+
+    const rawPeer = val('router-peer-filter');
+    if (rawPeer.startsWith('bgp:')) {
+        const id = Number(rawPeer.split(':')[1]);
+        const peer = routerInventory.peers.find(p => Number(p.id) === id);
+        if (peer) {
+            const bits = [];
+            if (peer.remote_asn) bits.push('AS' + peer.remote_asn);
+            if (peer.description) bits.push(peer.description);
+            if (peer.peer_group) bits.push('group ' + peer.peer_group);
+            if (peer.source_interface) bits.push('source ' + peer.source_interface);
+            const afs = parseRouterJsonList(peer.address_families);
+            if (afs.length) bits.push(afs.join(', '));
+            rows.push('<strong>Peer ' + escapeHtml(peer.peer_ip) + ':</strong> ' + bits.map(escapeHtml).join(' • '));
+        }
+    }
+
+    target.innerHTML = rows.join('<br>');
 }
 
 function circuitItem(label, value) {
