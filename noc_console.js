@@ -1606,6 +1606,8 @@ document.addEventListener('DOMContentLoaded', () => {
 let routerCommandMeta = null;
 let routerCommands = [];
 let routerCommandSearchTimer = null;
+let routerGlobalSearchTimer = null;
+let routerGlobalSearchRecords = [];
 let routerInventoryMeta = null;
 let routerInventory = null;
 
@@ -1636,6 +1638,72 @@ function routerCommandMissingVariables(template) {
         if (!values[key] && !missing.includes(key)) missing.push(key);
     }
     return missing;
+}
+
+function queueRouterGlobalSearch() {
+    clearTimeout(routerGlobalSearchTimer);
+    routerGlobalSearchTimer = setTimeout(searchRouterInventoryGlobal, 250);
+}
+
+async function searchRouterInventoryGlobal() {
+    const q = val('router-global-search');
+    const select = $('router-global-results');
+    if (!select) return;
+
+    routerGlobalSearchRecords = [];
+    if (q.length < 2) {
+        select.replaceChildren(new Option('Type 2+ characters to search', ''));
+        select.disabled = true;
+        return;
+    }
+
+    select.replaceChildren(new Option('Searching...', ''));
+    select.disabled = true;
+
+    try {
+        const response = await fetch('api.php?' + new URLSearchParams({action:'search_router_inventory', q}));
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Search failed.');
+
+        routerGlobalSearchRecords = Array.isArray(result.records) ? result.records : [];
+        select.replaceChildren(new Option(routerGlobalSearchRecords.length ? 'Select matching circuit' : 'No matching circuit found', ''));
+
+        routerGlobalSearchRecords.forEach((row, index) => {
+            const details = [
+                row.client_name,
+                row.site_name,
+                row.service_type,
+                row.interface_name,
+                row.vlan_id ? 'VLAN ' + row.vlan_id : '',
+                row.vrf,
+                row.ip_address ? row.ip_address + (row.prefix_length ? '/' + row.prefix_length : '') : '',
+                row.link_id
+            ].filter(Boolean).join(' • ');
+            select.add(new Option(row.hostname + ' — ' + details, String(index)));
+        });
+        select.disabled = routerGlobalSearchRecords.length === 0;
+    } catch (error) {
+        select.replaceChildren(new Option('Search error', ''));
+        select.disabled = true;
+        notice(error.message || 'Unable to search router inventory.', true);
+    }
+}
+
+async function handleRouterGlobalResult() {
+    const index = Number(val('router-global-results'));
+    if (!Number.isFinite(index) || !routerGlobalSearchRecords[index]) return;
+    const row = routerGlobalSearchRecords[index];
+
+    const deviceSelect = $('router-device-filter');
+    if (!deviceSelect) return;
+    deviceSelect.value = String(row.device_id);
+    await handleRouterDeviceChange();
+
+    const interfaceSelect = $('router-interface-filter');
+    if (interfaceSelect && [...interfaceSelect.options].some(o => o.value === String(row.interface_id))) {
+        interfaceSelect.value = String(row.interface_id);
+        handleRouterInterfaceChange();
+    }
 }
 
 async function loadRouterWorkspace() {
@@ -2445,6 +2513,12 @@ function resetRouterCommandInputs(resetSelectors = true) {
     clearRouterRuntimeValues();
 
     if (resetSelectors) {
+        if ($('router-global-search')) $('router-global-search').value = '';
+        if ($('router-global-results')) {
+            $('router-global-results').replaceChildren(new Option('Type 2+ characters to search', ''));
+            $('router-global-results').disabled = true;
+        }
+        routerGlobalSearchRecords = [];
         resetRouterInventorySelectors(true);
         routerInventory = null;
         renderRouterPeakSummary();
