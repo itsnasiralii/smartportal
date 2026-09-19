@@ -870,6 +870,20 @@
      </div>
 
      <div class="form-group">
+      <label for="router-policy-filter">🛡️ Stored Route Policy</label>
+      <select id="router-policy-filter" onchange="handleRouterPolicyChange()" disabled>
+       <option value="">Select Route Policy</option>
+      </select>
+     </div>
+
+     <div class="form-group">
+      <label for="router-prefix-filter">📚 Stored Prefix List</label>
+      <select id="router-prefix-filter" onchange="handleRouterPrefixChange()" disabled>
+       <option value="">Select Prefix List</option>
+      </select>
+     </div>
+
+     <div class="form-group">
       <label for="router-platform-filter">🧭 Router / Platform</label>
       <select id="router-platform-filter" onchange="handleRouterPlatformChange()">
        <option value="">Select Router / Platform</option>
