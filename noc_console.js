@@ -1688,7 +1688,8 @@ function normalizeRouterInventory(result) {
                 ip_address: row.ip_address,
                 subnet_mask: row.subnet_mask || '',
                 prefix_length: Number(row.prefix_length || 0),
-                is_secondary: Number(row.is_secondary || 0)
+                is_secondary: Number(row.is_secondary || 0),
+                likely_peer_ip: row.likely_peer_ip || ''
             });
         }
     });
@@ -1699,6 +1700,7 @@ function normalizeRouterInventory(result) {
         iface.primary_ip = primary?.ip_address || '';
         iface.subnet_mask = primary?.subnet_mask || '';
         iface.prefix_length = primary?.prefix_length || 0;
+        iface.likely_peer_ip = primary?.likely_peer_ip || '';
     });
 
     return {
@@ -1736,6 +1738,8 @@ async function handleRouterDeviceChange() {
     populateRouterInventoryVrfOptions();
     populateRouterInterfaceOptions();
     populateRouterPeerOptions();
+    populateRouterPolicyOptions();
+    populateRouterPrefixOptions();
 
     await loadRouterCommandMeta();
     const platform = routerInventory.device?.platform || '';
@@ -1825,14 +1829,62 @@ function populateRouterPeerOptions() {
 
     const vrf = val('router-inventory-vrf');
     const peers = routerInventory.peers.filter(peer => !vrf || peer.vrf === vrf);
+    const seen = new Set();
+
     peers.forEach(peer => {
+        if (!peer.peer_ip || seen.has(peer.peer_ip)) return;
+        seen.add(peer.peer_ip);
         const label = peer.peer_ip +
             (peer.remote_asn ? ' • AS' + peer.remote_asn : '') +
             (peer.vrf ? ' • ' + peer.vrf : '');
-        select.add(new Option(label, String(peer.id)));
+        const option = new Option(label, 'bgp:' + String(peer.id));
+        option.dataset.peerIp = peer.peer_ip;
+        option.dataset.vrf = peer.vrf || '';
+        select.add(option);
     });
+
+    filteredRouterInterfaces().forEach(iface => {
+        const peerIp = iface.likely_peer_ip || '';
+        if (!peerIp || seen.has(peerIp)) return;
+        seen.add(peerIp);
+        const label = peerIp + ' • inferred from ' + iface.interface_name +
+            (iface.vrf ? ' • ' + iface.vrf : '');
+        const option = new Option(label, 'p2p:' + String(iface.id));
+        option.dataset.peerIp = peerIp;
+        option.dataset.vrf = iface.vrf || '';
+        select.add(option);
+    });
+
     select.disabled = select.options.length <= 1;
     if ([...select.options].some(o => o.value === previous)) select.value = previous;
+}
+
+function populateRouterPolicyOptions() {
+    const select = $('router-policy-filter');
+    select.replaceChildren(new Option('Select Route Policy', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+    uniqueValues(routerInventory.route_policies || []).forEach(name => select.add(new Option(name, name)));
+    select.disabled = select.options.length <= 1;
+}
+
+function populateRouterPrefixOptions() {
+    const select = $('router-prefix-filter');
+    select.replaceChildren(new Option('Select Prefix List', ''));
+    if (!routerInventory) { select.disabled = true; return; }
+    uniqueValues(routerInventory.prefix_lists || []).forEach(name => select.add(new Option(name, name)));
+    select.disabled = select.options.length <= 1;
+}
+
+function handleRouterPolicyChange() {
+    if ($('router-policy')) $('router-policy').value = val('router-policy-filter');
+    updateRouterVariableVisibility();
+    renderRouterCommands();
+}
+
+function handleRouterPrefixChange() {
+    if ($('router-prefix')) $('router-prefix').value = val('router-prefix-filter');
+    updateRouterVariableVisibility();
+    renderRouterCommands();
 }
 
 function handleRouterClientChange() {
@@ -1883,9 +1935,9 @@ function handleRouterInterfaceChange() {
     if ($('router-trunk')) $('router-trunk').value = trunkMatch ? trunkMatch[1] : '';
 
     populateRouterPeerOptions();
-    const matchingPeers = routerInventory.peers.filter(peer => !iface.vrf || peer.vrf === iface.vrf);
-    if (matchingPeers.length === 1) {
-        $('router-peer-filter').value = String(matchingPeers[0].id);
+    const peerOptions = [...$('router-peer-filter').options].filter(o => o.value);
+    if (peerOptions.length === 1) {
+        $('router-peer-filter').value = peerOptions[0].value;
         handleRouterPeerChange();
     } else {
         updateRouterVariableVisibility();
@@ -1894,8 +1946,8 @@ function handleRouterInterfaceChange() {
 }
 
 function handleRouterPeerChange() {
-    const id = Number(val('router-peer-filter'));
-    if (!routerInventory || !id) {
+    const raw = val('router-peer-filter');
+    if (!routerInventory || !raw) {
         if ($('router-peer-ip')) $('router-peer-ip').value = '';
         if ($('router-ip')) $('router-ip').value = '';
         updateRouterVariableVisibility();
@@ -1903,18 +1955,35 @@ function handleRouterPeerChange() {
         return;
     }
 
-    const peer = routerInventory.peers.find(item => Number(item.id) === id);
-    if (!peer) return;
+    const selectedOption = $('router-peer-filter').selectedOptions[0];
+    const peerIp = selectedOption?.dataset.peerIp || '';
+    const peerVrf = selectedOption?.dataset.vrf || '';
 
-    if ($('router-peer-ip')) $('router-peer-ip').value = peer.peer_ip || '';
-    if ($('router-ip')) $('router-ip').value = peer.peer_ip || '';
+    if ($('router-peer-ip')) $('router-peer-ip').value = peerIp;
+    if ($('router-ip')) $('router-ip').value = peerIp;
+    if (peerVrf && $('router-vrf')) $('router-vrf').value = peerVrf;
 
-    if (peer.vrf && $('router-vrf')) $('router-vrf').value = peer.vrf;
-    if (peer.import_policy && $('router-policy')) $('router-policy').value = peer.import_policy;
-    else if (peer.export_policy && $('router-policy')) $('router-policy').value = peer.export_policy;
+    if (raw.startsWith('bgp:')) {
+        const id = Number(raw.split(':')[1]);
+        const peer = routerInventory.peers.find(item => Number(item.id) === id);
+        if (peer) {
+            if (peer.import_policy) {
+                if ($('router-policy')) $('router-policy').value = peer.import_policy;
+                if ([...$('router-policy-filter').options].some(o => o.value === peer.import_policy)) $('router-policy-filter').value = peer.import_policy;
+            } else if (peer.export_policy) {
+                if ($('router-policy')) $('router-policy').value = peer.export_policy;
+                if ([...$('router-policy-filter').options].some(o => o.value === peer.export_policy)) $('router-policy-filter').value = peer.export_policy;
+            }
 
-    if (peer.import_prefix && $('router-prefix')) $('router-prefix').value = peer.import_prefix;
-    else if (peer.export_prefix && $('router-prefix')) $('router-prefix').value = peer.export_prefix;
+            if (peer.import_prefix) {
+                if ($('router-prefix')) $('router-prefix').value = peer.import_prefix;
+                if ([...$('router-prefix-filter').options].some(o => o.value === peer.import_prefix)) $('router-prefix-filter').value = peer.import_prefix;
+            } else if (peer.export_prefix) {
+                if ($('router-prefix')) $('router-prefix').value = peer.export_prefix;
+                if ([...$('router-prefix-filter').options].some(o => o.value === peer.export_prefix)) $('router-prefix-filter').value = peer.export_prefix;
+            }
+        }
+    }
 
     updateRouterVariableVisibility();
     renderRouterCommands();
@@ -1926,7 +1995,9 @@ function resetRouterInventorySelectors(resetDevice = true) {
         ['router-client-filter','All Clients / Services'],
         ['router-inventory-vrf','All VRFs'],
         ['router-interface-filter','Select Interface'],
-        ['router-peer-filter','Select Peer IP']
+        ['router-peer-filter','Select Peer IP'],
+        ['router-policy-filter','Select Route Policy'],
+        ['router-prefix-filter','Select Prefix List']
     ]) {
         const select = $(id);
         if (!select) continue;
@@ -2041,7 +2112,7 @@ function updateRouterVariableVisibility() {
     });
 
     const values = routerCommandValues();
-    const inventoryAutofill = new Set(['vlan','trunk','ip','vrf','peer_ip']);
+    const inventoryAutofill = new Set(['vlan','trunk','ip','vrf','peer_ip','policy','prefix']);
 
     document.querySelectorAll('[data-router-var]').forEach(group => {
         const key = group.dataset.routerVar;
