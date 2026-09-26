@@ -13,6 +13,15 @@ jobs:
       - name: PHP syntax
         run: find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
       - name: JavaScript syntax
-        run: node --check noc_console.js
+        run: |
+          node --check noc_console.js
+          node --check acl_commands.js
+      - name: ACL generator tests
+        run: node tests/acl_commands.test.js
+      - name: ACL panel access checks
+        run: |
+          php tests/acl_panel_access.php allowed
+          php tests/acl_panel_access.php denied
       - name: Router parser smoke test
         run: php tests/router_parser_smoke.php
+

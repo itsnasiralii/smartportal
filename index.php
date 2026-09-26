@@ -37,6 +37,9 @@ foreach ($feature_tab_map as $fkey => $tId) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart System — Corporate NOC Console</title>
     <link rel="stylesheet" href="style.css">
+    <?php if (has_feature_access('router')): ?>
+    <link rel="stylesheet" href="acl_commands.css?v=<?= filemtime(__DIR__ . '/acl_commands.css') ?>">
+    <?php endif; ?>
 </head>
 <body>
     <header class="top-navbar">
@@ -97,6 +100,7 @@ foreach ($feature_tab_map as $fkey => $tId) {
             <?php endif; ?>
             <?php if (has_feature_access('router')): ?>
                 <button type="button" class="tab-btn <?= $active_tab_id === 'tab-router' ? 'active' : '' ?>" onclick="switchTab('tab-router')">🛠️ Router Commands</button>
+                <button type="button" class="tab-btn" onclick="switchTab('tab-acl')">🛡️ ACL Commands</button>
             <?php endif; ?>
         </nav>
     </header>
@@ -104,6 +108,7 @@ foreach ($feature_tab_map as $fkey => $tId) {
         <div id="console-notice" class="alert-box success" role="status" aria-live="polite" hidden></div>
 
         <?php include 'console_panels.php'; ?>
+        <?php include __DIR__ . '/acl_panel.php'; ?>
         <!-- TAB 1: COMPLAINT MANAGER -->
         <?php if (has_feature_access('complaints')): ?>
         <div id="tab-complaints" class="tab-content <?= $active_tab_id === 'tab-complaints' ? 'active' : '' ?>">
@@ -607,5 +612,9 @@ foreach ($feature_tab_map as $fkey => $tId) {
     </div>
     <script>window.nocCsrf = <?= json_encode($_SESSION['csrf']) ?>; window.nocUserRole = <?= json_encode($_SESSION['noc_role'] ?? 'user') ?>; const NOC_OPTIONS = <?= file_get_contents(__DIR__ . '/noc_options.json') ?>;</script>
     <script src="noc_console.js?v=<?= filemtime(__DIR__ . '/noc_console.js') ?>"></script>
+    <?php if (has_feature_access('router')): ?>
+    <script src="acl_commands.js?v=<?= filemtime(__DIR__ . '/acl_commands.js') ?>"></script>
+    <?php endif; ?>
 </body>
 </html>
+

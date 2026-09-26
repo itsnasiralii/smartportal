@@ -17,6 +17,7 @@ Smart Portal brings common incident, complaint, escalation, outage-analysis, das
 - Asia/Karachi timezone handling
 - Authentication and CSRF protection
 - Docker and PHP deployment support
+- ACL Commands beside Router Commands: named/numbered Cisco and Huawei ACLs, classic/optimized output, and collapsible wildcard tables
 
 ## Architecture
 
@@ -68,6 +69,8 @@ For production use:
 ```bash
 python tests/test_console.py
 node --check noc_console.js
+node --check acl_commands.js
+node tests/acl_commands.test.js
 ```
 
 ## Project purpose
@@ -83,3 +86,8 @@ GitHub: [@itsnasiralii](https://github.com/itsnasiralii)
 ## Responsible use
 
 Use sanitized or synthetic data for public demonstrations. Keep customer details, vendor contacts, escalation matrices, credentials, internal topology data, and production information private.
+
+
+## ACL Commands
+
+The ACL tab shares the existing `router` feature permission and runs entirely in the browser. No Python service, database migration, or new dependency is needed. It supports Cisco standard/extended and Huawei basic/advanced ACLs with named or numbered identifiers, destination/protocol/port criteria, and a final permit-all rule. The selected range receives the chosen action; the rest of the scope receives the opposite action. The reference table embeds the supplied ACL Table.xlsx snapshot. Generated commands assume a fresh ACL and preserve first-match order; applying an ACL to a device remains a separate operation.
