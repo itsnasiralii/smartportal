@@ -102,10 +102,29 @@ foreach ($feature_tab_map as $fkey => $tId) {
                 <button type="button" class="tab-btn <?= $active_tab_id === 'tab-router' ? 'active' : '' ?>" onclick="switchTab('tab-router')">🛠️ Router Commands</button>
                 <button type="button" class="tab-btn" onclick="switchTab('tab-acl')">🛡️ ACL Commands</button>
             <?php endif; ?>
+            <button type="button" class="tab-btn" onclick="switchTab('tab-handover')">⏱️ Handover</button>
         </nav>
     </header>
     <div class="main-container">
         <div id="console-notice" class="alert-box success" role="status" aria-live="polite" hidden></div>
+
+        <!-- HANDOVER MONITOR -->
+        <div id="tab-handover" class="tab-content">
+            <div class="panel-card">
+                <div class="panel-header handover-header"><div><h2>⏱️ Handover Monitoring</h2><p>Track handed-over complaints. Pending items turn red automatically after 30 minutes.</p></div><div class="handover-summary"><strong id="handover-pending-count">0</strong><span>Pending</span><strong id="handover-overdue-count">0</strong><span>Overdue</span></div></div>
+                <div class="panel-body">
+                    <form id="handover-form" onsubmit="addHandover(event)">
+                        <div class="form-row">
+                            <div class="form-group col-half"><label>Email Subject / Complaint</label><input id="handover-subject" required placeholder="RE: OGDCL Wali 15 Mbps Point to Point Link Unstable || Netsat"></div>
+                            <div class="form-group col-half"><label>Vendor</label><select id="handover-vendor"><option>Netsat</option><option>Comstar</option><option>CMI</option><option>Cybernet</option><option>Other</option></select></div>
+                        </div>
+                        <div class="form-row"><div class="form-group col-half"><label>Ticket / Reference</label><input id="handover-ticket" placeholder="Optional ticket number"></div><div class="form-group col-half"><label>Owner / Shift</label><input id="handover-owner" placeholder="NOC engineer / shift"></div></div>
+                        <button class="btn-primary" type="submit">➕ Add to Handover</button>
+                    </form>
+                    <div class="table-responsive"><table class="data-table handover-table"><thead><tr><th>Subject</th><th>Vendor</th><th>Ticket</th><th>Owner</th><th>Started</th><th>Timer</th><th>Status</th><th>Action</th></tr></thead><tbody id="handover-body"></tbody></table></div>
+                </div>
+            </div>
+        </div>
 
         <?php include 'console_panels.php'; ?>
         <?php include __DIR__ . '/acl_panel.php'; ?>
@@ -615,6 +634,20 @@ foreach ($feature_tab_map as $fkey => $tId) {
     <?php if (has_feature_access('router')): ?>
     <script src="acl_commands.js?v=<?= filemtime(__DIR__ . '/acl_commands.js') ?>"></script>
     <?php endif; ?>
+
+<script>
+const HANDOVER_KEY='smartportal_handover_v1';
+let handoverItems=[];
+function loadHandover(){try{handoverItems=JSON.parse(localStorage.getItem(HANDOVER_KEY)||'[]');if(!Array.isArray(handoverItems)) handoverItems=[];}catch(e){handoverItems=[];}renderHandover();}
+function saveHandover(){localStorage.setItem(HANDOVER_KEY,JSON.stringify(handoverItems));}
+function addHandover(e){e.preventDefault();const subject=document.getElementById('handover-subject').value.trim();if(!subject)return;handoverItems.unshift({id:Date.now(),subject,vendor:document.getElementById('handover-vendor').value,ticket:document.getElementById('handover-ticket').value.trim(),owner:document.getElementById('handover-owner').value.trim(),startedAt:new Date().toISOString(),status:'PENDING'});saveHandover();e.target.reset();renderHandover();}
+function completeHandover(id){handoverItems=handoverItems.map(x=>x.id===id?{...x,status:'DONE',completedAt:new Date().toISOString()}:x);saveHandover();renderHandover();}
+function removeHandover(id){handoverItems=handoverItems.filter(x=>x.id!==id);saveHandover();renderHandover();}
+function handoverAge(start){const sec=Math.max(0,Math.floor((Date.now()-new Date(start).getTime())/1000));const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;return {sec,text:(h?h+'h ':'')+String(m).padStart(2,'0')+'m '+String(s).padStart(2,'0')+'s'};}
+function escH(v){const d=document.createElement('div');d.textContent=v??'';return d.innerHTML;}
+function renderHandover(){const body=document.getElementById('handover-body');if(!body)return;let pending=0,overdue=0;body.innerHTML=handoverItems.map(x=>{const age=handoverAge(x.startedAt),isDone=x.status==='DONE',isOver=!isDone&&age.sec>=1800;if(!isDone)pending++;if(isOver)overdue++;return '<tr class="'+(isOver?'handover-overdue ':'')+(isDone?'handover-done':'')+'"><td class="handover-subject">'+escH(x.subject)+'</td><td>'+escH(x.vendor)+'</td><td>'+escH(x.ticket||'—')+'</td><td>'+escH(x.owner||'—')+'</td><td>'+new Date(x.startedAt).toLocaleString()+'</td><td><span class="handover-timer '+(isOver?'overdue':'')+'">'+(isDone?'Completed':age.text)+'</span></td><td><span class="status-pill '+(isDone?'status-green':isOver?'status-red':'status-yellow')+'">'+(isDone?'DONE':isOver?'OVERDUE':'PENDING')+'</span></td><td class="handover-actions">'+(!isDone?'<button class="btn-copy" onclick="completeHandover('+x.id+')">✓ Done</button> ':'')+'<button class="btn-danger" onclick="removeHandover('+x.id+')">Remove</button></td></tr>';}).join('');if(!handoverItems.length)body.innerHTML='<tr><td colspan="8" class="handover-empty">No handover items yet.</td></tr>';document.getElementById('handover-pending-count').textContent=pending;document.getElementById('handover-overdue-count').textContent=overdue;}
+document.addEventListener('DOMContentLoaded',()=>{loadHandover();setInterval(renderHandover,1000);});
+</script>
 </body>
 </html>
 
