@@ -16,6 +16,9 @@ jobs:
         run: |
           node --check noc_console.js
           node --check acl_commands.js
+          node --check handover.js
+      - name: Handover regression tests
+        run: node --test tests/handover.test.js
       - name: ACL generator tests
         run: node tests/acl_commands.test.js
       - name: ACL panel access checks

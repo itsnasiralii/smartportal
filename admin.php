@@ -30,6 +30,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 $status_msg = '';
+require_once 'handover_settings.php';
+$handoverConfig = handover_settings($pdo);
+if ($authenticated && ($_POST['action'] ?? '') === 'save_handover_settings') {
+    $minutes = filter_var($_POST['overdueMinutes'] ?? '', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 10080]]);
+    $updated = [];
+    $valid = $minutes !== false;
+    foreach (['vendors', 'teams', 'regions', 'comments'] as $key) {
+        $raw = $_POST[$key] ?? '';
+        if (!is_string($raw) || strlen($raw) > 10000) { $valid = false; break; }
+        $updated[$key] = array_values(array_unique(array_filter(array_map('trim', preg_split('/\r?\n/', $raw)), 'strlen')));
+    }
+    if ($valid) {
+        $updated['overdueMinutes'] = $minutes;
+        $pdo->prepare('INSERT OR REPLACE INTO handover_settings (id, settings) VALUES (1, ?)')->execute([json_encode($updated)]);
+        $handoverConfig = $updated;
+        $status_msg = 'Handover settings saved. Reload the Handover page to use them.';
+    } else {
+        $status_msg = 'Settings not saved: use 1–10080 minutes and lists of at most 10000 characters.';
+    }
+}
+
 
 // CRUD: DELETE COMPLAINT
 if ($authenticated && isset($_POST['del_complaint'])) {
@@ -393,6 +414,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
 
         <?php if ($authenticated): ?>
         <nav class="top-tabs-nav">
+            <button type="button" class="tab-btn" onclick="switchAdminTab('tab-admin-handover')">Handover Settings</button>
             <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-complaints' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-complaints')">🗂️ Manage Complaints (CRUD)</button>
             <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-vendors' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-vendors')">🏪 Vendor Matrix Manager (CRUD)</button>
             <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-users' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-users')">👤 User Authentication (CRUD)</button>
@@ -430,6 +452,8 @@ $router_devices_admin = $authenticated ? $pdo->query("
             <?php if (!empty($status_msg)): ?>
                 <div class="alert-box success"><?php echo htmlspecialchars($status_msg); ?></div>
             <?php endif; ?>
+
+            <?php include 'handover_admin.php'; ?>
 
             <!-- ADMIN TAB 1: COMPLAINTS CRUD -->
             <div id="tab-admin-complaints" class="tab-content <?= ($active_admin_tab ?? '') === 'tab-admin-complaints' ? 'active' : '' ?>">
@@ -1259,6 +1283,12 @@ $router_devices_admin = $authenticated ? $pdo->query("
     </div>
 
     <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        if (location.hash === '#tab-admin-handover') {
+            document.querySelectorAll('.tab-content, .tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-admin-handover')?.classList.add('active');
+        }
+    });
     function switchAdminTab(tabId) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
