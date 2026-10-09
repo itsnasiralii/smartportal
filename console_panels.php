@@ -61,7 +61,22 @@
       <button type="button" class="preset-pill" onclick="applyRosterPreset(21,21)">21 ON / 21 OFF</button>
      </div>
 
-     <div class="roster-section-title" style="margin-top:16px;">🕒 Shift Presets</div>
+     <div class="form-group">
+      <label for="roster-rotation">Shift Rotation</label>
+      <select id="roster-rotation" onchange="calculateRoster()">
+       <option value="alternating" selected>Alternate Morning / Night after each off block</option>
+       <option value="fixed">Fixed shift (custom hours)</option>
+      </select>
+     </div>
+     <div class="form-group">
+      <label for="roster-starting-shift">Starting Shift on Anchor Date</label>
+      <select id="roster-starting-shift" onchange="calculateRoster()">
+       <option value="day">Morning: 07:00–19:00</option>
+       <option value="night">Night: 19:00–07:00 next day</option>
+      </select>
+      <small>4 duty / 4 off by default, then opposite shift. Edit the anchor date below. Off dates mean no new shift starts; the last night ends at 07:00 on the first off date.</small>
+     </div>
+     <div class="roster-section-title" style="margin-top:16px;">🕒 Starting Shift Presets</div>
      <div class="preset-btn-group">
       <button type="button" class="preset-pill" onclick="applyShiftPreset('07:00',12)">☀️ Day (07:00 - 19:00)</button>
       <button type="button" class="preset-pill" onclick="applyShiftPreset('19:00',12)">🌙 Night (19:00 - 07:00)</button>
@@ -1036,3 +1051,4 @@
  </div>
 </div>
 <?php endif; ?>
+

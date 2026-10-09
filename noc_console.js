@@ -295,6 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // DUTY ROSTER & WORKLOAD ANALYTICS MODULE
 // ============================================================
 let rosterDataCache = null;
+let rosterRequestId = 0;
 
 function applyRosterPreset(daysOn, daysOff) {
     if ($('roster-days-on')) $('roster-days-on').value = daysOn;
@@ -303,6 +304,7 @@ function applyRosterPreset(daysOn, daysOff) {
 }
 
 function applyShiftPreset(startTime, hours) {
+    if ($('roster-starting-shift')) $('roster-starting-shift').value = startTime === '19:00' ? 'night' : 'day';
     if ($('roster-shift-start')) $('roster-shift-start').value = startTime;
     if ($('roster-shift-hours')) $('roster-shift-hours').value = hours;
     calculateRoster();
@@ -310,11 +312,8 @@ function applyShiftPreset(startTime, hours) {
 
 function syncRosterCheckTime() {
     const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).formatToParts(now).map(p => [p.type, p.value]));
+    const {year: y, month: m, day: d, hour: hh, minute: mm} = parts;
     if ($('roster-check-date')) $('roster-check-date').value = `${y}-${m}-${d}`;
     if ($('roster-check-time')) $('roster-check-time').value = `${hh}:${mm}`;
     calculateRoster();
@@ -333,8 +332,20 @@ function switchRosterSubtab(subtab) {
 
 async function calculateRoster() {
     if (!$('roster-days-on')) return;
+    const requestId = ++rosterRequestId;
+    rosterDataCache = null;
+    const alternating = val('roster-rotation') === 'alternating';
+    $('roster-starting-shift').disabled = !alternating;
+    $('roster-shift-start').disabled = alternating;
+    $('roster-shift-hours').disabled = alternating;
+    if (alternating) {
+        $('roster-shift-start').value = val('roster-starting-shift') === 'night' ? '19:00' : '07:00';
+        $('roster-shift-hours').value = 12;
+    }
     const weekends = Array.from(document.querySelectorAll('input[name="roster-weekend"]:checked')).map(cb => cb.value);
     const params = {
+        rotation: val('roster-rotation') || 'fixed',
+        starting_shift: val('roster-starting-shift') || 'day',
         days_on: val('roster-days-on') || 4,
         days_off: val('roster-days-off') || 4,
         anchor: val('roster-anchor'),
@@ -349,6 +360,7 @@ async function calculateRoster() {
 
     try {
         const res = await api('calculate_roster', params);
+        if (requestId !== rosterRequestId) return;
         if (!res.success) {
             notice(res.message || 'Error calculating roster', true);
             return;
@@ -414,7 +426,7 @@ async function calculateRoster() {
                 <tr style="${r.is_duty ? 'background:#f0fdf4;' : ''}">
                     <td style="font-weight:600;">${escapeHtml(r.date_str)}</td>
                     <td>${escapeHtml(r.day)}</td>
-                    <td>${r.is_duty ? '<span class="badge-duty">🟢 ON DUTY</span>' : '<span class="badge-off">⚪ OFF</span>'}</td>
+                    <td>${r.is_duty ? '<span class="badge-duty">' + escapeHtml(r.shift_name || 'Duty') + '</span>' : '<span class="badge-off">⚪ OFF</span>'}</td>
                     <td>${r.is_duty ? escapeHtml(r.shift_start) + ' → ' + escapeHtml(r.shift_end) : '<span style="color:#94a3b8;">-</span>'}</td>
                     <td style="font-weight:${r.hours ? '600' : 'normal'};">${r.hours ? r.hours + ' hrs' : '0'}</td>
                     <td>${r.is_weekend ? (r.is_duty ? '<span class="badge-weekend-duty">Weekend Duty</span>' : '<span style="color:#94a3b8;">Weekend</span>') : '<span style="color:#64748b;">Weekday</span>'}</td>
@@ -577,7 +589,7 @@ function exportRosterCsv() {
     const lines = [headers.join(',')];
     rosterDataCache.daily.forEach(r => {
         const dayType = r.is_weekend ? 'Weekend' : 'Weekday';
-        const status = r.is_duty ? 'Duty' : 'Off';
+        const status = r.is_duty ? (r.shift_name || 'Duty') : 'Off';
         const shiftStart = r.is_duty ? r.shift_start : '-';
         const shiftEnd = r.is_duty ? r.shift_end : '-';
         const hours = r.is_duty ? r.hours : 0;
@@ -2551,3 +2563,4 @@ function resetRouterCommandInputs(resetSelectors = true) {
 document.addEventListener('DOMContentLoaded', () => {
     if ($('tab-router')?.classList.contains('active')) loadRouterWorkspace();
 });
+

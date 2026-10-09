@@ -351,14 +351,31 @@ if ($action === 'calculate_roster') {
     $check_date_str = trim($_POST['check_date'] ?? date('Y-m-d'));
     $shift_start_str = trim($_POST['shift_start'] ?? '07:00');
     $check_time_str = trim($_POST['check_time'] ?? date('H:i'));
+    $rotation = ($_POST['rotation'] ?? 'fixed') === 'alternating' ? 'alternating' : 'fixed';
+    if ($rotation === 'alternating') {
+        $shift_start_str = ($_POST['starting_shift'] ?? 'day') === 'night' ? '19:00' : '07:00';
+    }
 
     $shift_hours = max(1, min(24, intval($_POST['shift_hours'] ?? 12)));
-    $days_on = max(1, intval($_POST['days_on'] ?? 4));
-    $days_off = max(1, intval($_POST['days_off'] ?? 4));
+    if ($rotation === 'alternating') $shift_hours = 12;
+    $days_on = max(1, min(90, intval($_POST['days_on'] ?? 4)));
+    $days_off = max(1, min(90, intval($_POST['days_off'] ?? 4)));
 
     $weekends = isset($_POST['weekends']) ? json_decode($_POST['weekends'], true) : ['Saturday', 'Sunday'];
     if (!is_array($weekends)) $weekends = ['Saturday', 'Sunday'];
 
+    foreach ([$anchor_str, $start_str, $end_str, $check_date_str] as $date_input) {
+        $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date_input);
+        if (!$parsed || $parsed->format('Y-m-d') !== $date_input) {
+            echo json_encode(['success' => false, 'message' => 'Please enter valid roster dates.']);
+            exit;
+        }
+    }
+    if (!preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/', $shift_start_str) ||
+        !preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/', $check_time_str)) {
+        echo json_encode(['success' => false, 'message' => 'Please enter valid shift and check times.']);
+        exit;
+    }
     $anchor_ts = strtotime($anchor_str);
     $range_start_ts = strtotime($start_str);
     $range_end_ts = strtotime($end_str);
@@ -369,6 +386,11 @@ if ($action === 'calculate_roster') {
         exit;
     }
 
+    if (($range_end_ts - $range_start_ts) / 86400 > 3660) {
+        echo json_encode(['success' => false, 'message' => 'Please choose a range of 10 years or less.']);
+        exit;
+    }
+    $moment = strtotime($check_date_str . ' ' . $check_time_str);
     $cur = $range_start_ts;
     $rows = [];
     $duty_days = 0;
@@ -392,11 +414,11 @@ if ($action === 'calculate_roster') {
             $hours = $shift_hours;
             $total_hours += $hours;
             if ($is_weekend) $weekend_duties++;
-            if ($cur >= $check_date_ts) $remaining_duty++;
-            else $completed_duty++;
 
-            $start_dt = strtotime(date('Y-m-d', $cur) . ' ' . $shift_start_str);
+            $start_dt = strtotime(date('Y-m-d', $cur) . ' ' . roster_shift_start($cur, $anchor_ts, $days_on, $days_off, $shift_start_str, $rotation));
             $end_dt = $start_dt + ($shift_hours * 3600);
+            if ($end_dt <= $moment) $completed_duty++;
+            else $remaining_duty++;
             $shift_start_disp = date('H:i', $start_dt);
             $shift_end_disp = date('H:i', $end_dt) . (date('Y-m-d', $end_dt) !== date('Y-m-d', $start_dt) ? ' (+1 day)' : '');
         } else {
@@ -409,6 +431,7 @@ if ($action === 'calculate_roster') {
             'day' => $wName,
             'is_weekend' => $is_weekend,
             'is_duty' => $duty,
+            'shift_name' => $duty ? ($rotation === 'alternating' ? ($shift_start_disp === '19:00' ? 'Night' : 'Morning') : 'Duty') : 'Off',
             'shift_start' => $shift_start_disp,
             'shift_end' => $shift_end_disp,
             'hours' => $hours
@@ -431,7 +454,7 @@ if ($action === 'calculate_roster') {
     foreach ([-1, 0] as $offset) {
         $cand_date = strtotime("{$offset} day", $check_date_ts);
         if (roster_is_duty($cand_date, $anchor_ts, $days_on, $days_off)) {
-            $s_time = strtotime(date('Y-m-d', $cand_date) . ' ' . $shift_start_str);
+            $s_time = strtotime(date('Y-m-d', $cand_date) . ' ' . roster_shift_start($cand_date, $anchor_ts, $days_on, $days_off, $shift_start_str, $rotation));
             $e_time = $s_time + ($shift_hours * 3600);
             if ($moment >= $s_time && $moment < $e_time) {
                 $active_shift = ['start' => $s_time, 'end' => $e_time];
@@ -441,7 +464,7 @@ if ($action === 'calculate_roster') {
     }
 
     if (!$active_shift && roster_is_duty($check_date_ts, $anchor_ts, $days_on, $days_off)) {
-        $s_time = strtotime(date('Y-m-d', $check_date_ts) . ' ' . $shift_start_str);
+        $s_time = strtotime(date('Y-m-d', $check_date_ts) . ' ' . roster_shift_start($check_date_ts, $anchor_ts, $days_on, $days_off, $shift_start_str, $rotation));
         $e_time = $s_time + ($shift_hours * 3600);
         if ($moment < $s_time) {
             $upcoming_shift = ['start' => $s_time, 'end' => $e_time];
@@ -469,9 +492,9 @@ if ($action === 'calculate_roster') {
             'timestamp_str' => date('l, d F Y • H:i', $moment) . ' PKT',
             'is_active' => ($active_shift !== null),
             'is_upcoming' => ($upcoming_shift !== null),
-            'active_text' => $active_shift ? date('H:i', $active_shift['start']) . ' → ' . date('H:i', $active_shift['end']) : '',
+            'active_text' => $active_shift ? date('d M H:i', $active_shift['start']) . ' → ' . date('d M H:i', $active_shift['end']) : '',
             'remaining_minutes' => $active_shift ? max(0, intval(($active_shift['end'] - $moment) / 60)) : 0,
-            'upcoming_text' => $upcoming_shift ? date('H:i', $upcoming_shift['start']) . ' → ' . date('H:i', $upcoming_shift['end']) : '',
+            'upcoming_text' => $upcoming_shift ? date('d M H:i', $upcoming_shift['start']) . ' → ' . date('d M H:i', $upcoming_shift['end']) : '',
             'until_minutes' => $upcoming_shift ? max(0, intval(($upcoming_shift['start'] - $moment) / 60)) : 0,
             'block_type' => $b_type,
             'block_pos' => $b_pos,
@@ -1215,3 +1238,4 @@ if ($action === 'export_nms_clients') {
 
 echo json_encode(['error' => 'Invalid action']);
 ?>
+

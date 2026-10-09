@@ -28,3 +28,6 @@ jobs:
       - name: Router parser smoke test
         run: php tests/router_parser_smoke.php
 
+
+      - name: Roster rotation regression tests
+        run: python3 tests/test_roster_rotation.py
