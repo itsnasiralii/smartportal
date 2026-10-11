@@ -17,6 +17,7 @@ jobs:
           node --check noc_console.js
           node --check acl_commands.js
           node --check handover.js
+          node --check rtq.js
       - name: Handover regression tests
         run: node --test tests/handover.test.js
       - name: ACL generator tests
@@ -31,3 +32,8 @@ jobs:
 
       - name: Roster rotation regression tests
         run: python3 tests/test_roster_rotation.py
+
+      - name: RTQ validation and export checks
+        run: |
+          node --test tests/rtq.test.js
+          php tests/rtq_model_test.php

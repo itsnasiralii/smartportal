@@ -627,6 +627,7 @@ if ($use_sqlite) {
             'roster' => '📅 Duty Roster',
             'vpbx' => '📞 VPBX / Regulatory',
             'nms' => '🏷️ NMS Customer Search',
+            'rtq' => 'RTQ Management',
             'router' => '🛠️ Router Commands'
         ];
 

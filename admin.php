@@ -414,6 +414,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
 
         <?php if ($authenticated): ?>
         <nav class="top-tabs-nav">
+            <a class="tab-btn" href="rtq.php#settings">RTQ Settings</a>
             <button type="button" class="tab-btn" onclick="switchAdminTab('tab-admin-handover')">Handover Settings</button>
             <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-complaints' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-complaints')">🗂️ Manage Complaints (CRUD)</button>
             <button type="button" class="tab-btn <?= ($active_admin_tab ?? '') === 'tab-admin-vendors' ? 'active' : '' ?>" onclick="switchAdminTab('tab-admin-vendors')">🏪 Vendor Matrix Manager (CRUD)</button>

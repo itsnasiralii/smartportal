@@ -104,6 +104,7 @@ foreach ($feature_tab_map as $fkey => $tId) {
                 <button type="button" class="tab-btn <?= $active_tab_id === 'tab-router' ? 'active' : '' ?>" onclick="switchTab('tab-router')">🛠️ Router Commands</button>
                 <button type="button" class="tab-btn" onclick="switchTab('tab-acl')">🛡️ ACL Commands</button>
             <?php endif; ?>
+            <?php if (has_feature_access('rtq')): ?><a class="tab-btn" href="rtq.php">RTQ Management</a><?php endif; ?>
             <button type="button" class="tab-btn" onclick="switchTab('tab-handover')">⏱️ Handover</button>
         </nav>
     </header>

@@ -1,0 +1,100 @@
+{
+  "Issue Found At": [
+    "CDN Provider",
+    "Customer",
+    "IT",
+    "KAM",
+    "NOMC - CS Core",
+    "NOMC - IP Core",
+    "NOMC - PS Core",
+    "NOMC - Transmission Microwave",
+    "NOMC - Transmission Optical",
+    "OMO",
+    "RCA Awaited",
+    "Region - CBS",
+    "Region - Field Operations (FOPs)",
+    "Uplink ISP",
+    "Vendor"
+  ],
+  "SLA Sheet Working": [
+    "Cmpak Configurations Fault",
+    "Cmpak Fiber Break(Dual/Triple)",
+    "Cmpak Fiber Break(Spur/Single)",
+    "Cmpak Hardware Fault",
+    "Cmpak Other Issue",
+    "Cmpak Performance Issue",
+    "Cmpak Power Issue",
+    "Cmpak TXN MW",
+    "Colocation Power Issue",
+    "Comercial Team Issue",
+    "Customer End Issue",
+    "Ipcore Issues",
+    "OMO Issue",
+    "Outside Network Issue",
+    "Region – CBS",
+    "Vendor Last Mile",
+    "Vendor Uplink Isp",
+    "Vendor VPBX"
+  ],
+  "RCA": [
+    "Configurations Issue",
+    "IP Related Issue",
+    "Port Block (Software)",
+    "Fiber Break (Single)",
+    "Fiber Break (Dual/Triple)",
+    "Fiber Break (Spur)",
+    "Port Down",
+    "Port Problematic",
+    "Link Choking",
+    "Hardware Faulty",
+    "Power Issue",
+    "Customer end power issue",
+    "Customer related issue",
+    "Customer Port down",
+    "customer end hardware issue",
+    "Link already found operational"
+  ],
+  "Status": [
+    "Open",
+    "Closed",
+    "Restored",
+    "RCA Awaited"
+  ],
+  "Teams Involved in TroubleShooting": [
+    "TXN CM",
+    "TXN PM",
+    "Customer lastmile",
+    "Vendor",
+    "IP-Core",
+    "CS-Core",
+    "PS-Core",
+    "IT",
+    "UpStream ISP"
+  ],
+  "presets": [
+    {
+      "name": "Vendor • hardware fault",
+      "Issue Found At": "Vendor",
+      "SLA Sheet Working": "Vendor Last Mile",
+      "RCA": "Hardware Faulty",
+      "Teams Involved in TroubleShooting": "Vendor",
+      "Status": "Closed"
+    },
+    {
+      "name": "TXN CM • dual/triple fiber break",
+      "Issue Found At": "NOMC - Transmission Optical",
+      "SLA Sheet Working": "Cmpak Fiber Break(Dual/Triple)",
+      "RCA": "Fiber Break (Dual/Triple)",
+      "Teams Involved in TroubleShooting": "TXN CM",
+      "Status": "Closed"
+    },
+    {
+      "name": "Customer • power issue",
+      "Issue Found At": "Customer",
+      "SLA Sheet Working": "Customer End Issue",
+      "RCA": "Customer end power issue",
+      "Teams Involved in TroubleShooting": "Customer lastmile",
+      "Status": "Closed"
+    }
+  ]
+}
