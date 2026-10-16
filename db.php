@@ -627,12 +627,9 @@ if ($use_sqlite) {
             'roster' => '📅 Duty Roster',
             'vpbx' => '📞 VPBX / Regulatory',
             'nms' => '🏷️ NMS Customer Search',
-<<<<<<< HEAD
             'rtq' => 'RTQ Management',
-            'router' => '🛠️ Router Commands'
-=======
+            'router' => '🛠️ Router Commands',
             'new_links' => '🔗 New Links'
->>>>>>> 8b3efe4 (Add New Links provisioning tab with automated raw-to-refine converter and export)
         ];
 
         // Seed default vendors if empty
