@@ -2563,4 +2563,75 @@ function resetRouterCommandInputs(resetSelectors = true) {
 document.addEventListener('DOMContentLoaded', () => {
     if ($('tab-router')?.classList.contains('active')) loadRouterWorkspace();
 });
+// ============================================================
+// NEW LINKS FORMATTER & PROVISIONING CONVERTER
+// ============================================================
+async function handleProcessNewLinks(e) {
+    e.preventDefault();
+    const fileInput = $('new-links-file');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        notice('Please select a raw Excel file first.', true);
+        return;
+    }
+    const file = fileInput.files[0];
+    const btn = $('btn-process-links');
+    const spinner = $('new-links-spinner');
 
+    await run(async () => {
+        btn.disabled = true;
+        if (spinner) spinner.style.display = 'inline';
+        notice('Processing raw link file and generating Refine schema...');
+
+        const form = new FormData();
+        form.set('file', file);
+
+        const data = await api('process_new_links', form);
+
+        if (!data || !data.success) {
+            throw new Error(data?.message || 'Failed to process links.');
+        }
+
+        const dlBtn = $('btn-download-refined');
+        const dlUrl = 'api.php?' + new URLSearchParams({ action: 'download_new_links', token: data.token });
+        dlBtn.href = dlUrl;
+        dlBtn.setAttribute('download', 'Refine_data.xlsx');
+
+        $('new-links-status-title').textContent = `✅ ${data.total} Links Successfully Formatted`;
+        $('new-links-status-desc').textContent = data.message;
+
+        if (Array.isArray(data.preview) && data.preview.length > 0) {
+            $('new-links-preview-body').innerHTML = data.preview.map(r => `
+                <tr>
+                    <td>${escapeHtml(r.sr)}</td>
+                    <td><strong>${escapeHtml(r.unique_id)}</strong></td>
+                    <td><span class="badge-status" style="background:#e0f2fe; color:#0369a1; font-weight:700;">${escapeHtml(r.type)}</span></td>
+                    <td>${escapeHtml(r.client_name)}</td>
+                    <td>${escapeHtml(r.circuit_name)}</td>
+                    <td>${escapeHtml(r.band_width)}</td>
+                    <td>${escapeHtml(r.cmpak_site_id)}</td>
+                    <td>${escapeHtml(r.switch_location)}</td>
+                    <td>${escapeHtml(r.vlan)}</td>
+                    <td>${escapeHtml(r.media)}</td>
+                    <td>${escapeHtml(r.work_order)}</td>
+                </tr>
+            `).join('');
+        } else {
+            $('new-links-preview-body').innerHTML = '<tr><td colspan="11">No preview rows available.</td></tr>';
+        }
+
+        $('new-links-results').style.display = 'block';
+
+        // Auto trigger download for user convenience
+        const autoDl = document.createElement('a');
+        autoDl.href = dlUrl;
+        autoDl.download = 'Refine_data.xlsx';
+        document.body.appendChild(autoDl);
+        autoDl.click();
+        document.body.removeChild(autoDl);
+
+        notice(`Refine data ready! ${data.total} links formatted and auto-download triggered.`);
+    }).finally(() => {
+        btn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+    });
+}

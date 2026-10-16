@@ -1051,4 +1051,68 @@
  </div>
 </div>
 <?php endif; ?>
+<!-- ============================================================ -->
+<!-- TAB: NEW LINKS FORMATTER & PROVISIONING CONVERTER -->
+<!-- ============================================================ -->
+<?php if (has_feature_access('new_links')): ?>
+<div id="tab-new-links" class="tab-content <?= ($active_tab_id ?? '') === 'tab-new-links' ? 'active' : '' ?>">
+ <div class="panel-card">
+  <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:gap; gap:12px;">
+   <div>
+    <h2>🔗 New Links Formatter &amp; Provisioning Converter</h2>
+    <p>Convert raw copied link data into standardized 48-column NOC Impacted Links format with automated cleaning and instant Excel export.</p>
+   </div>
+  </div>
+  <div class="panel-body">
+   <form onsubmit="handleProcessNewLinks(event)">
+    <div class="form-group">
+     <label for="new-links-file">Upload Raw Link Data File (.xlsx, .xls)</label>
+     <input id="new-links-file" type="file" accept=".xlsx,.xls" required>
+     <small style="color:#64748b; font-size:0.8rem; display:block; margin-top:4px;">
+      Supports raw link sheets with repeated headers, blank lines, and whitespace. Automatically cleans values and maps all 15 active fields into standard 48-column NOC schema.
+     </small>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; margin-top:12px;">
+     <button type="submit" id="btn-process-links" class="btn-primary">⚡ Transform to Refine Data</button>
+     <span id="new-links-spinner" style="display:none; color:#0284c7; font-size:0.9rem; font-weight:600;">⏳ Processing links...</span>
+    </div>
+   </form>
 
+   <div id="new-links-results" style="display:none; margin-top:24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px; padding:14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;">
+     <div>
+      <h3 style="margin:0; font-size:1.05rem; color:#166534;" id="new-links-status-title">✅ Transformation Complete</h3>
+      <p style="margin:4px 0 0 0; font-size:0.88rem; color:#15803d;" id="new-links-status-desc"></p>
+     </div>
+     <a id="btn-download-refined" class="btn-primary" style="background:#16a34a; text-decoration:none; padding:10px 18px; font-weight:700;">
+      📥 Download Refine Data (.xlsx)
+     </a>
+    </div>
+
+    <h3 style="margin-top:20px; margin-bottom:12px;">Transformed Links Preview</h3>
+    <div class="table-responsive">
+     <table class="data-table" id="new-links-preview-table">
+      <thead>
+       <tr>
+        <th>SR</th>
+        <th>Unique ID</th>
+        <th>Type</th>
+        <th>Client Name</th>
+        <th>Circuit Name</th>
+        <th>Bandwidth</th>
+        <th>CMPAK Site ID</th>
+        <th>Switch Location</th>
+        <th>VLAN</th>
+        <th>Media</th>
+        <th>Work Order</th>
+       </tr>
+      </thead>
+      <tbody id="new-links-preview-body">
+      </tbody>
+     </table>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+<?php endif; ?>

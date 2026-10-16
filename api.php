@@ -52,6 +52,8 @@ $action_permissions = [
     'search_nms_clients' => ['nms'],
     'get_nms_client' => ['nms'],
     'export_nms_clients' => ['nms'],
+    'process_new_links' => ['new_links'],
+    'download_new_links' => ['new_links'],
 ];
 
 if (isset($action_permissions[$action])) {

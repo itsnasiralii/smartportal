@@ -192,3 +192,41 @@ if ($action === 'download_report') {
     header('Content-Disposition: attachment; filename="' . ($kind === 'full' ? 'Outage_Links' : 'Sample_Links') . '.xlsx"');
     readfile($path); exit;
 }
+
+if ($action === 'process_new_links') {
+    $file = $_FILES['file'] ?? null;
+    if (!$file || $file['error'] !== UPLOAD_ERR_OK) fail_request('Upload a valid Excel file (.xlsx or .xls) within the upload limit.');
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ['xlsx', 'xls']) || $file['size'] > 25 * 1024 * 1024) fail_request('Use an XLSX or XLS file smaller than 25 MB.');
+    $token = bin2hex(random_bytes(16));
+    $dir = $noc_data_dir . '/exports/' . $token;
+    if (!mkdir($dir, 0700, true)) fail_request('Could not create export directory.');
+    $input = $dir . '/raw_input.' . $ext;
+    if (!move_uploaded_file($file['tmp_name'], $input)) fail_request('Could not store the uploaded file.');
+    $python = getenv('NOC_PYTHON') ?: (PHP_OS_FAMILY === 'Windows' ? 'py' : 'python3');
+    $proc = proc_open([$python, __DIR__ . '/new_links_worker.py', $input, $dir], [1 => ['pipe', 'w'], 2 => ['file', $dir . '/error.log', 'w']], $pipes);
+    if (!is_resource($proc)) fail_request('Python worker could not be started. Check Python configuration.');
+    $output = stream_get_contents($pipes[1]); fclose($pipes[1]);
+    $code = proc_close($proc); unlink($input);
+    $result = json_decode($output, true);
+    if ($code !== 0 || !$result) fail_request('Failed to transform links data. Error log: ' . (file_exists($dir . '/error.log') ? file_get_contents($dir . '/error.log') : 'Unknown error.'));
+    if (!$result['success']) reply($result);
+    reply([
+        'success' => true,
+        'token' => $token,
+        'total' => $result['total'] ?? 0,
+        'preview' => $result['preview'] ?? [],
+        'message' => $result['message'] ?? 'Successfully transformed.'
+    ]);
+}
+if ($action === 'download_new_links') {
+    $token = $_GET['token'] ?? '';
+    if (!preg_match('/^[a-f0-9]{32}$/', $token)) fail_request('Invalid token.');
+    $path = $noc_data_dir . '/exports/' . $token . '/Refine_data.xlsx';
+    if (!is_file($path)) fail_request('The refined file is no longer available. Please upload again.');
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="Refine_data.xlsx"');
+    header('Content-Length: ' . filesize($path));
+    readfile($path); exit;
+}
+
