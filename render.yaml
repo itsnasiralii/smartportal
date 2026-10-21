@@ -11,4 +11,4 @@ services:
       - key: NOC_PASSWORD
         generateValue: true
       - key: NOC_ADMIN_PASSWORD
-        value: admin123
+        sync: false

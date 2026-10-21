@@ -2566,6 +2566,32 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================
 // NEW LINKS FORMATTER & PROVISIONING CONVERTER
 // ============================================================
+
+// Downloads the refined workbook and reports a clear, retryable error instead of a silent browser failure.
+async function downloadRefined(url) {
+    try {
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (!res.ok) {
+            let msg = 'Download failed (HTTP ' + res.status + ').';
+            try { const j = await res.json(); if (j && j.message) msg = j.message; } catch (_) {}
+            throw new Error(msg);
+        }
+        const blob = await res.blob();
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = 'Refine_data.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+        return true;
+    } catch (err) {
+        notice((err && err.message ? err.message : 'Download failed.') + ' Click "Download Refine Data (.xlsx)" to retry.', true);
+        return false;
+    }
+}
+
 async function handleProcessNewLinks(e) {
     e.preventDefault();
     const fileInput = $('new-links-file');
@@ -2595,6 +2621,7 @@ async function handleProcessNewLinks(e) {
         const dlUrl = 'api.php?' + new URLSearchParams({ action: 'download_new_links', token: data.token });
         dlBtn.href = dlUrl;
         dlBtn.setAttribute('download', 'Refine_data.xlsx');
+        dlBtn.onclick = (ev) => { ev.preventDefault(); downloadRefined(dlUrl); };
 
         $('new-links-status-title').textContent = `✅ ${data.total} Links Successfully Formatted`;
         $('new-links-status-desc').textContent = data.message;
@@ -2622,14 +2649,8 @@ async function handleProcessNewLinks(e) {
         $('new-links-results').style.display = 'block';
 
         // Auto trigger download for user convenience
-        const autoDl = document.createElement('a');
-        autoDl.href = dlUrl;
-        autoDl.download = 'Refine_data.xlsx';
-        document.body.appendChild(autoDl);
-        autoDl.click();
-        document.body.removeChild(autoDl);
-
-        notice(`Refine data ready! ${data.total} links formatted and auto-download triggered.`);
+        const downloaded = await downloadRefined(dlUrl);
+        if (downloaded) notice(`Refine data ready! ${data.total} links formatted and auto-download triggered.`);
     }).finally(() => {
         btn.disabled = false;
         if (spinner) spinner.style.display = 'none';

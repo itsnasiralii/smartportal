@@ -4,7 +4,7 @@ require_once 'db.php';
 require_once 'noc_helpers.php';
 require_once 'router_config_parser.php';
 
-$admin_passcode = getenv('NOC_ADMIN_PASSWORD') ?: 'admin123';
+$admin_passcode = (string)(getenv('NOC_ADMIN_PASSWORD') ?: '');
 $authenticated = !empty($_SESSION['admin_logged_in']) || (($_SESSION['noc_role'] ?? '') === 'admin');
 
 if (isset($_POST['logout'])) {
@@ -15,7 +15,7 @@ if (isset($_POST['logout'])) {
 
 $login_error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'login') {
-    if (hash_equals($admin_passcode, $_POST['password'] ?? '')) {
+    if ($admin_passcode !== '' && hash_equals($admin_passcode, (string)($_POST['password'] ?? ''))) {
         session_regenerate_id(true);
         $_SESSION['admin_logged_in'] = true;
         $_SESSION['noc_logged_in'] = true;
@@ -442,7 +442,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
                         <input type="hidden" name="action" value="login">
                         <div class="form-group">
                             <label>Passcode</label>
-                            <input type="password" name="password" required autofocus placeholder="Default: admin123">
+                            <input type="password" name="password" required autofocus placeholder="Administrator passcode">
                         </div>
                         <button type="submit" class="btn-primary" style="width:100%;">Unlock Admin Console</button>
                     </form>
@@ -692,7 +692,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
                                     </div>
                                     <div class="form-group col-half">
                                         <label>Password</label>
-                                        <input type="password" name="new_password" placeholder="e.g. ijaz123" required autocomplete="new-password">
+                                        <input type="password" name="new_password" placeholder="Choose a strong password" required autocomplete="new-password">
                                     </div>
                                     <div class="form-group" style="width:170px; flex-shrink:0;">
                                         <label>Role</label>

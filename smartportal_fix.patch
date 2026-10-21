@@ -1,0 +1,156 @@
+diff --git a/admin.php b/admin.php
+index 9adfde4..1730381 100644
+--- a/admin.php
++++ b/admin.php
+@@ -4,7 +4,7 @@ require_once 'db.php';
+ require_once 'noc_helpers.php';
+ require_once 'router_config_parser.php';
+ 
+-$admin_passcode = getenv('NOC_ADMIN_PASSWORD') ?: 'admin123';
++$admin_passcode = (string)(getenv('NOC_ADMIN_PASSWORD') ?: '');
+ $authenticated = !empty($_SESSION['admin_logged_in']) || (($_SESSION['noc_role'] ?? '') === 'admin');
+ 
+ if (isset($_POST['logout'])) {
+@@ -15,7 +15,7 @@ if (isset($_POST['logout'])) {
+ 
+ $login_error = '';
+ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'login') {
+-    if (hash_equals($admin_passcode, $_POST['password'] ?? '')) {
++    if ($admin_passcode !== '' && hash_equals($admin_passcode, (string)($_POST['password'] ?? ''))) {
+         session_regenerate_id(true);
+         $_SESSION['admin_logged_in'] = true;
+         $_SESSION['noc_logged_in'] = true;
+@@ -442,7 +442,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
+                         <input type="hidden" name="action" value="login">
+                         <div class="form-group">
+                             <label>Passcode</label>
+-                            <input type="password" name="password" required autofocus placeholder="Default: admin123">
++                            <input type="password" name="password" required autofocus placeholder="Administrator passcode">
+                         </div>
+                         <button type="submit" class="btn-primary" style="width:100%;">Unlock Admin Console</button>
+                     </form>
+@@ -692,7 +692,7 @@ $router_devices_admin = $authenticated ? $pdo->query("
+                                     </div>
+                                     <div class="form-group col-half">
+                                         <label>Password</label>
+-                                        <input type="password" name="new_password" placeholder="e.g. ijaz123" required autocomplete="new-password">
++                                        <input type="password" name="new_password" placeholder="Choose a strong password" required autocomplete="new-password">
+                                     </div>
+                                     <div class="form-group" style="width:170px; flex-shrink:0;">
+                                         <label>Role</label>
+diff --git a/db.php b/db.php
+index d669a60..db9bc17 100644
+--- a/db.php
++++ b/db.php
+@@ -99,8 +99,11 @@ if ($use_sqlite) {
+         $u_count = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+         if ($u_count == 0) {
+             $stmt_u = $pdo->prepare("INSERT INTO users (username, password_hash, role, permissions) VALUES (?, ?, ?, 'all')");
+-            $stmt_u->execute(['ijaz', password_hash('ijaz123', PASSWORD_DEFAULT), 'admin']);
+-            $stmt_u->execute(['admin', password_hash('admin123', PASSWORD_DEFAULT), 'admin']);
++            // Fresh database: never ship known passwords. Use NOC_SEED_PASSWORD, else a random one written to the server log.
++            $seed_pw = getenv('NOC_SEED_PASSWORD') ?: bin2hex(random_bytes(8));
++            if (!getenv('NOC_SEED_PASSWORD')) error_log('SmartPortal: seeded admin accounts with one-time password: ' . $seed_pw);
++            $stmt_u->execute(['ijaz', password_hash($seed_pw, PASSWORD_DEFAULT), 'admin']);
++            $stmt_u->execute(['admin', password_hash($seed_pw, PASSWORD_DEFAULT), 'admin']);
+         }
+ 
+         // 6. VPBX / Regulatory Testing Portal tables
+diff --git a/noc_console.js b/noc_console.js
+index 9693cb8..85fa7c8 100644
+--- a/noc_console.js
++++ b/noc_console.js
+@@ -2566,6 +2566,32 @@ document.addEventListener('DOMContentLoaded', () => {
+ // ============================================================
+ // NEW LINKS FORMATTER & PROVISIONING CONVERTER
+ // ============================================================
++
++// Downloads the refined workbook and reports a clear, retryable error instead of a silent browser failure.
++async function downloadRefined(url) {
++    try {
++        const res = await fetch(url, { credentials: 'same-origin' });
++        if (!res.ok) {
++            let msg = 'Download failed (HTTP ' + res.status + ').';
++            try { const j = await res.json(); if (j && j.message) msg = j.message; } catch (_) {}
++            throw new Error(msg);
++        }
++        const blob = await res.blob();
++        const objUrl = URL.createObjectURL(blob);
++        const a = document.createElement('a');
++        a.href = objUrl;
++        a.download = 'Refine_data.xlsx';
++        document.body.appendChild(a);
++        a.click();
++        document.body.removeChild(a);
++        setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
++        return true;
++    } catch (err) {
++        notice((err && err.message ? err.message : 'Download failed.') + ' Click "Download Refine Data (.xlsx)" to retry.', true);
++        return false;
++    }
++}
++
+ async function handleProcessNewLinks(e) {
+     e.preventDefault();
+     const fileInput = $('new-links-file');
+@@ -2595,6 +2621,7 @@ async function handleProcessNewLinks(e) {
+         const dlUrl = 'api.php?' + new URLSearchParams({ action: 'download_new_links', token: data.token });
+         dlBtn.href = dlUrl;
+         dlBtn.setAttribute('download', 'Refine_data.xlsx');
++        dlBtn.onclick = (ev) => { ev.preventDefault(); downloadRefined(dlUrl); };
+ 
+         $('new-links-status-title').textContent = `✅ ${data.total} Links Successfully Formatted`;
+         $('new-links-status-desc').textContent = data.message;
+@@ -2622,14 +2649,8 @@ async function handleProcessNewLinks(e) {
+         $('new-links-results').style.display = 'block';
+ 
+         // Auto trigger download for user convenience
+-        const autoDl = document.createElement('a');
+-        autoDl.href = dlUrl;
+-        autoDl.download = 'Refine_data.xlsx';
+-        document.body.appendChild(autoDl);
+-        autoDl.click();
+-        document.body.removeChild(autoDl);
+-
+-        notice(`Refine data ready! ${data.total} links formatted and auto-download triggered.`);
++        const downloaded = await downloadRefined(dlUrl);
++        if (downloaded) notice(`Refine data ready! ${data.total} links formatted and auto-download triggered.`);
+     }).finally(() => {
+         btn.disabled = false;
+         if (spinner) spinner.style.display = 'none';
+diff --git a/noc_extensions.php b/noc_extensions.php
+index 44c55fb..9976be6 100644
+--- a/noc_extensions.php
++++ b/noc_extensions.php
+@@ -57,7 +57,7 @@ function handover($rows) {
+     return implode("\n", $lines);
+ }
+ 
+-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' && !in_array($action, ['get_dashboard', 'get_vendor_matrix', 'list_complaints', 'outage_history', 'download_report', 'get_vpbx_data', 'get_vpbx_ivrs', 'search_nms_clients', 'get_nms_client', 'export_nms_clients', 'get_router_meta', 'get_router_commands', 'get_router_inventory_meta', 'get_router_inventory', 'search_router_inventory'])) {
++if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' && !in_array($action, ['get_dashboard', 'get_vendor_matrix', 'list_complaints', 'outage_history', 'download_report', 'download_new_links', 'get_vpbx_data', 'get_vpbx_ivrs', 'search_nms_clients', 'get_nms_client', 'export_nms_clients', 'get_router_meta', 'get_router_commands', 'get_router_inventory_meta', 'get_router_inventory', 'search_router_inventory'])) {
+     http_response_code(405); reply(['success' => false, 'message' => 'Use POST for this action.']);
+ }
+ // Serialize complaint changes across team sessions, as in the Python shared-state lock.
+@@ -224,9 +224,12 @@ if ($action === 'download_new_links') {
+     if (!preg_match('/^[a-f0-9]{32}$/', $token)) fail_request('Invalid token.');
+     $path = $noc_data_dir . '/exports/' . $token . '/Refine_data.xlsx';
+     if (!is_file($path)) fail_request('The refined file is no longer available. Please upload again.');
++    while (ob_get_level() > 0) ob_end_clean();
+     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+     header('Content-Disposition: attachment; filename="Refine_data.xlsx"');
+     header('Content-Length: ' . filesize($path));
++    header('Cache-Control: private, no-store');
++    header('X-Content-Type-Options: nosniff');
+     readfile($path); exit;
+ }
+ 
+diff --git a/render.yaml b/render.yaml
+index 6456ced..be90fdd 100644
+--- a/render.yaml
++++ b/render.yaml
+@@ -11,4 +11,4 @@ services:
+       - key: NOC_PASSWORD
+         generateValue: true
+       - key: NOC_ADMIN_PASSWORD
+-        value: admin123
++        sync: false

@@ -99,8 +99,11 @@ if ($use_sqlite) {
         $u_count = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
         if ($u_count == 0) {
             $stmt_u = $pdo->prepare("INSERT INTO users (username, password_hash, role, permissions) VALUES (?, ?, ?, 'all')");
-            $stmt_u->execute(['ijaz', password_hash('ijaz123', PASSWORD_DEFAULT), 'admin']);
-            $stmt_u->execute(['admin', password_hash('admin123', PASSWORD_DEFAULT), 'admin']);
+            // Fresh database: never ship known passwords. Use NOC_SEED_PASSWORD, else a random one written to the server log.
+            $seed_pw = getenv('NOC_SEED_PASSWORD') ?: bin2hex(random_bytes(8));
+            if (!getenv('NOC_SEED_PASSWORD')) error_log('SmartPortal: seeded admin accounts with one-time password: ' . $seed_pw);
+            $stmt_u->execute(['ijaz', password_hash($seed_pw, PASSWORD_DEFAULT), 'admin']);
+            $stmt_u->execute(['admin', password_hash($seed_pw, PASSWORD_DEFAULT), 'admin']);
         }
 
         // 6. VPBX / Regulatory Testing Portal tables
